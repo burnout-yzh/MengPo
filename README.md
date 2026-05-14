@@ -111,7 +111,38 @@ Related adjustable retrieval gate:
 
 - Top semantic candidate limit is exposed via `candidate_limit` in `memory_mcp/retrieval.py` (`Samsara_Rank` / `Naihe_Bridge`).
 
-## Roadmap
+## Operations Notes
+
+### Clearing the Database (Keep Schema, Remove Data)
+
+When the DB file is locked by a running MCP server and cannot be deleted, clear tables with SQL:
+
+```bash
+python -c "
+import sqlite3, sqlite_vec
+c=sqlite3.connect('mengpo_memory.db')
+c.enable_load_extension(True); sqlite_vec.load(c)
+c.execute('DELETE FROM chunks_vec')
+c.execute('DELETE FROM chunks_meta')
+c.execute('DELETE FROM memories')
+c.commit(); c.execute('VACUUM'); c.close()
+print('DB cleared')
+"
+```
+
+> `chunks_vec` is a vec0 virtual table — the `sqlite_vec` extension must be loaded before DELETE. Rebuild the index by re-running `inject_memory.py`.
+
+### v0.10.78 Performance Baseline (Windows + RTX 3070 Laptop 8GB)
+
+| Scenario | Files | Injected | Time | GPU Released |
+|------|:--:|------|------|:--:|
+| Full rebuild (empty DB) | 145 | 2807 chunks | **99.8s** | ✅ ollama stop |
+| Incremental (no changes) | 145 | 0 chunks | **1.9s** | ✅ |
+| Single-file incremental (est.) | 1 | ~43 chunks | ~8-10s | ✅ |
+
+Config: `chunk: size_min=160, size_max=500`, `batch_size=15`, `qwen3-embedding-0.6b`. See `BENCHMARK.md` for details.
+
+## Rebuild Scan Limits (T15 Precheck)
 
 The active roadmap lives in this repository's issue and commit history.
 

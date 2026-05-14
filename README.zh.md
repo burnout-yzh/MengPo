@@ -68,6 +68,37 @@ python3 scripts/check_consistency.py <db_path>
 
 算法的核心参数（包括衰减常数、阈值等）均由 `bowl.yaml`（孟婆汤碗）承载，开发者可根据自身认知主频 $R$ 进行微调。
 
+## 运维笔记
+
+### DB 清空（保留 schema，清数据）
+
+当 DB 被 MCP server 锁住无法 `del` 时，用 SQL 清表：
+
+```bash
+python -c "
+import sqlite3, sqlite_vec
+c=sqlite3.connect('mengpo_memory.db')
+c.enable_load_extension(True); sqlite_vec.load(c)
+c.execute('DELETE FROM chunks_vec')
+c.execute('DELETE FROM chunks_meta')
+c.execute('DELETE FROM memories')
+c.commit(); c.execute('VACUUM'); c.close()
+print('DB cleared')
+"
+```
+
+> 注意：`chunks_vec` 是 vec0 虚拟表，必须加载 `sqlite_vec` 扩展后才能 DELETE。重建索引需要重新运行 `inject_memory.py`。
+
+### v0.10.78 性能基准（Windows + RTX 3070 Laptop 8GB）
+
+| 场景 | 文件 | 注入 | 耗时 | GPU 退出 |
+|------|:--:|------|------|:--:|
+| 全量重建 (DB 已清) | 145 | 2807 chunks | **99.8s** | ✅ ollama stop |
+| 增量 (无变化) | 145 | 0 chunks | **1.9s** | ✅ |
+| 单文件增量 (估计) | 1 | ~43 chunks | ~8-10s | ✅ |
+
+配置：`chunk: size_min=160, size_max=500`，`batch_size=15`，`qwen3-embedding-0.6b`。详见 `BENCHMARK.md`。
+
 ## 重建扫描限制（T15 预检）
 
 后续 `.md` 语料重建前，扫描预检限制定义在：
