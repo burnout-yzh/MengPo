@@ -19,12 +19,39 @@
 - MCP 工具：`get_pending_reviews()` + `resolve_dedup_review()`
 - `memory_stats()` 含 `pending_reviews` 计数
 
-### 当前状态
-- 85/85 测试通过
-- v0.10.75 全部已知问题关闭
-- 4 个 scripts 已上线（inject/bridge/s1_probe/inject_sample）
-- server.py 已重写为 facade
-- S1-S2-Expand 缓存优化已实装
+---
+
+## 运维笔记
+
+### DB 清空（保留 schema，清数据）
+
+当 DB 被 MCP server 锁住无法 `del` 时，用 SQL 清表：
+
+```bash
+python -c "
+import sqlite3, sqlite_vec
+c=sqlite3.connect('mengpo_memory.db')
+c.enable_load_extension(True); sqlite_vec.load(c)
+c.execute('DELETE FROM chunks_vec')
+c.execute('DELETE FROM chunks_meta')
+c.execute('DELETE FROM memories')
+c.commit(); c.execute('VACUUM'); c.close()
+print('DB cleared')
+"
+```
+
+> 注意：`chunks_vec` 是 vec0 虚拟表，必须加载 `sqlite_vec` 扩展后才能 DELETE。
+
+### v0.10.78 性能基准（2026-05-14 实测）
+
+| 场景 | 文件 | 注入 | 耗时 | GPU 退出 | 备注 |
+|------|:--:|------|------|:--:|------|
+| 全量重建（DB 已清） | 145 | 2807 chunks | **99.8s** | ✅ ollama stop | min=160, batch=15 |
+| 增量（无变化） | 145 | 0 chunks | **1.9s** | ✅ | content-hash 全命中 |
+| 增量（新增 3 天日记） | 3 | ~335 chunks | 纳入全量 | ✅ | 与全量共用 99.8s |
+| 真增量（单文件新增） | 1 | ~43 chunks | 估计 ~8-10s | ✅ | 推断值 |
+
+Chunk 吞吐：50 chunks / 5s（~10 chunks/s），批次稳定。
 
 v0.10.75 的全部 8 个已知问题已修复。85/85 单元测试通过。
 

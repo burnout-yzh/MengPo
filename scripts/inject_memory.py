@@ -19,7 +19,9 @@ import hashlib
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 # Allow running from repo root without installing the package.
@@ -36,6 +38,7 @@ from memory_mcp.embeddings import OllamaEmbeddingClient, EmbeddingError
 
 DB_PATH = os.getenv("MENGPO_DB_PATH", str(Path.cwd() / "mengpo_memory.db"))
 MEMORY_DIR = os.getenv("MENGPO_MEMORY_DIR", str(Path.cwd() / "memory"))
+CHUNK_MIN_SIZE = int(os.getenv("MENGPO_CHUNK_MIN_SIZE", "160"))
 CHUNK_SIZE = int(os.getenv("MENGPO_CHUNK_SIZE", "500"))
 BATCH_SIZE = int(os.getenv("MENGPO_BATCH_SIZE", "15"))
 OLLAMA_URL = os.getenv("MENGPO_OLLAMA_URL", "http://127.0.0.1:11434")
@@ -44,22 +47,114 @@ OLLAMA_MODEL = os.getenv("MENGPO_OLLAMA_MODEL", "qwen3-embedding-0.6b")
 
 # ── Chunking ───────────────────────────────────────────────────────────────
 
-def chunk_text(text: str, max_size: int = CHUNK_SIZE) -> list[str]:
-    """Split text on paragraph boundaries, respecting max_size.
+def chunk_text(text: str, max_size: int = CHUNK_SIZE, min_size: int = CHUNK_MIN_SIZE) -> list[str]:
+    """Split text into semantic chunks for embedding.
 
-    Paragraphs shorter than *max_size* are kept intact.  Longer paragraphs
-    are sliced into *max_size*-character windows.
+    Strategy:
+    1. Split on double-newline (paragraph boundaries).
+    2. Short paragraphs accumulate in a buffer until *min_size* is reached.
+    3. Hard boundaries (heading, hr, code fence) flush the buffer.
+    4. Long paragraphs are split at sentence boundaries near *max_size*.
     """
-    chunks: list[str] = []
-    for paragraph in text.split("\n\n"):
-        paragraph = paragraph.strip()
-        if not paragraph:
-            continue
-        if len(paragraph) <= max_size:
-            chunks.append(paragraph)
+    _HARD_BOUNDARY = {"---", "***", "___"}  # horizontal-rule variants
+    _CODE_FENCE = "```"
+
+    raw_paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if len(raw_paragraphs) <= 1:
+        # Single-paragraph edge case — split by sentence
+        return _split_long_paragraph(raw_paragraphs[0] if raw_paragraphs else "", max_size)
+
+    result: list[str] = []
+    buffer: str = ""
+
+    def _emit(chunk: str) -> None:
+        nonlocal buffer
+        if not chunk.strip():
+            return
+        # If buffer has content and chunk can be merged without exceeding max
+        if buffer and len(buffer) + len(chunk) + 2 <= max_size * 1.2:
+            buffer += "\n\n" + chunk
         else:
-            for i in range(0, len(paragraph), max_size):
-                chunks.append(paragraph[i : i + max_size])
+            if buffer:
+                result.append(buffer)
+            buffer = chunk
+        # Emit when buffer reaches min_size
+        if len(buffer) >= min_size:
+            result.append(buffer)
+            buffer = ""
+
+    for para in raw_paragraphs:
+        # Detect hard boundaries
+        stripped = para.strip()
+        if stripped in _HARD_BOUNDARY:
+            if buffer:
+                result.append(buffer)
+                buffer = ""
+            continue  # skip horizontal rules entirely
+        if stripped.startswith(_CODE_FENCE):
+            if buffer:
+                result.append(buffer)
+                buffer = ""
+            result.append(para)  # code fence as standalone chunk
+            continue
+
+        # Long paragraph — split at sentence boundaries
+        if len(para) > max_size:
+            if buffer:
+                result.append(buffer)
+                buffer = ""
+            sub_chunks = _split_long_paragraph(para, max_size)
+            for sc in sub_chunks:
+                _emit(sc)
+            continue
+
+        # Short/medium paragraph — accumulate
+        _emit(para)
+
+    # Flush remaining buffer
+    if buffer:
+        result.append(buffer)
+
+    return result
+
+
+def _split_long_paragraph(text: str, max_size: int) -> list[str]:
+    """Split a long paragraph at sentence boundaries near max_size."""
+    if len(text) <= max_size:
+        return [text] if text.strip() else []
+
+    # Sentence delimiters (Chinese + English)
+    _DELIM = ".!?;！？；。\n"
+    chunks: list[str] = []
+    pos = 0
+
+    while pos < len(text):
+        end = min(pos + max_size, len(text))
+        if end == len(text):
+            chunks.append(text[pos:].strip())
+            break
+
+        # Search backward from end for nearest sentence boundary
+        window_start = max(pos, end - 80)
+        best = -1
+        for i in range(end, window_start - 1, -1):
+            if text[i] in _DELIM:
+                best = i + 1  # include the delimiter
+                break
+
+        if best > pos:
+            chunks.append(text[pos:best].strip())
+            pos = best
+        else:
+            # No sentence boundary found — hard cut
+            chunks.append(text[pos:end].strip())
+            pos = end
+
+    # Merge trailing short chunks into the previous one
+    if len(chunks) >= 2 and len(chunks[-1]) < 30:
+        chunks[-2] = chunks[-2] + "\n" + chunks[-1]
+        chunks.pop()
+
     return chunks
 
 
@@ -107,18 +202,27 @@ def scan_markdown_files(root: str | Path) -> list[Path]:
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    print("=== MengPo Memory Injection ===")
-    print(f"  DB:        {DB_PATH}")
-    print(f"  Memory dir: {MEMORY_DIR}")
-    print(f"  Chunk size: {CHUNK_SIZE} chars")
-    print(f"  Batch size: {BATCH_SIZE}")
-    print(f"  Ollama:    {OLLAMA_URL} / {OLLAMA_MODEL}")
+    t0 = time.time()
+    log_lines: list[str] = []
+
+    def _log(msg: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        line = f"[{ts}] {msg}"
+        print(line)
+        log_lines.append(line)
+
+    _log("=== MengPo Memory Injection ===")
+    _log(f"  DB:        {DB_PATH}")
+    _log(f"  Memory dir: {MEMORY_DIR}")
+    _log(f"  Chunk size: {CHUNK_MIN_SIZE}-{CHUNK_SIZE} chars")
+    _log(f"  Batch size: {BATCH_SIZE}")
+    _log(f"  Ollama:    {OLLAMA_URL} / {OLLAMA_MODEL}")
 
     db = Database(DB_PATH)
     ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL)
 
     files = scan_markdown_files(MEMORY_DIR)
-    print(f"  Files:      {len(files)}")
+    _log(f"  Files:      {len(files)}")
 
     total = 0
     skipped = 0
@@ -140,11 +244,9 @@ def main() -> None:
         try:
             vecs = ec.embed_batch([q.chunk_content for q in batch])
         except EmbeddingError as exc:
-            print(f"  [fail] batch of {len(batch)}: embedding error ({exc})")
+            _log(f"  [fail] batch of {len(batch)}: embedding error ({exc})")
             skipped += len(batch)
             batch.clear()
-        if total > 0 and total % 100 == 0:
-            print(f"  {total} chunks...")
             return
 
         for q, vec in zip(batch, vecs):
@@ -165,11 +267,11 @@ def main() -> None:
                 )
                 total += 1
             except Exception as exc:
-                print(f"  [fail] {q.source_file} chunk {q.chunk_index}: store error ({exc})")
+                _log(f"  [fail] {q.source_file} chunk {q.chunk_index}: store error ({exc})")
                 skipped += 1
         batch.clear()
-        if total > 0 and total % 100 == 0:
-            print(f"  {total} chunks...")
+        if total > 0 and total % 50 == 0:
+            _log(f"  {total} chunks ({time.time()-t0:.0f}s)")
 
     for fp in files:
         # Derive a relative path for stable source_file dedup.
@@ -221,39 +323,38 @@ def main() -> None:
     # Flush remaining chunks.
     _flush_batch()
 
-    print(f"  Total:   {total} chunks injected")
-    print(f"  Updated: {updated} chunks (content changed, old version softly deleted)")
-    print(f"  Skipped: {skipped} chunks (unchanged or errored)")
+    _log(f"  Total:   {total} chunks injected")
+    _log(f"  Updated: {updated} chunks (content changed, old version softly deleted)")
+    _log(f"  Skipped: {skipped} chunks (unchanged or errored)")
     counts = db.row_counts()
-    print(f"  DB now:  {counts['memories']} memories, {counts['chunks_meta']} meta, "
-          f"{counts['chunks_vec']} vec")
+    _log(f"  DB now:  {counts['memories']} memories, {counts['chunks_meta']} meta, {counts['chunks_vec']} vec")
 
     # ── Dedup similarity scan ──────────────────────────────────────────
-    # Compare each newly-injected chunk against the existing vector pool.
-    # Chunks whose nearest-neighbour similarity crosses the dedup threshold
-    # are flagged pending_review for LLM adjudication.
+    # Batch-embed all new chunks once, then search per-chunk.
     if total > 0:
-        print(f"\n  Scanning {total} new chunks for dedup candidates...")
+        _log(f"  Dedup scan: {total} candidates")
+        t_dedup = time.time()
         from memory_mcp.dedup import DEFAULT_DEDUP_THRESHOLD
-        flagged = 0
+
         with db.transaction() as conn:
-            # Collect rowids of recently injected chunks.
             new_rows = conn.execute(
                 "SELECT rowid, content, memory_id FROM chunks_meta "
                 "WHERE pending_review = 0 ORDER BY rowid DESC LIMIT ?",
-                (total * 2,),  # generous window
+                (total * 2,),
             ).fetchall()
 
-            if new_rows:
-                for nr in new_rows:
-                    # Embed chunk content for similarity search.
-                    try:
-                        vec = ec.embed(nr["content"])
-                        qj = json.dumps(vec, separators=(",", ":"))
-                    except EmbeddingError:
-                        continue
+        if new_rows:
+            # Batch embed — one API call, not N.
+            try:
+                vecs = ec.embed_batch([nr["content"] for nr in new_rows])
+            except EmbeddingError as exc:
+                print(f"  Dedup scan aborted: embedding error ({exc})")
+                vecs = []
 
-                    # Find nearest neighbour (excluding self).
+            flagged = 0
+            with db.transaction() as conn:
+                for nr, vec in zip(new_rows, vecs):
+                    qj = json.dumps(vec, separators=(",", ":"))
                     neighbours = conn.execute(
                         "SELECT rowid, distance FROM chunks_vec "
                         "WHERE embedding MATCH ? AND rowid != ? "
@@ -269,11 +370,30 @@ def main() -> None:
                         flagged += 1
 
         if flagged > 0:
-            print(f"  Pending review: {flagged} chunks flagged for LLM adjudication")
-            print(f"  → LLM agent: call get_pending_reviews() to review, "
-                  f"then resolve_dedup_review() to commit")
+            _log(f"  Pending review: {flagged} flagged ({time.time()-t_dedup:.0f}s)")
+            _log(f"  → call get_pending_reviews() then resolve_dedup_review()")
         else:
-            print(f"  Pending review: 0 (no near-duplicates found)")
+            _log(f"  Pending review: 0 ({time.time()-t_dedup:.0f}s)")
+
+    # ── Release GPU ──
+    try:
+        import subprocess as _sp
+        _sp.run(["ollama", "stop", OLLAMA_MODEL], capture_output=True, timeout=30)
+        _log(f"  GPU released (ollama stop {OLLAMA_MODEL})")
+    except Exception:
+        _log(f"  GPU release skipped — run 'ollama stop {OLLAMA_MODEL}' manually if needed")
+
+    elapsed = time.time() - t0
+    _log(f"  Total time: {elapsed:.1f}s")
+    _log("=== Injection complete ===")
+
+    # Write log to file
+    log_path = Path(DB_PATH).parent / "inject.log"
+    try:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(log_lines) + "\n")
+    except OSError:
+        pass
 
     db.close()
 

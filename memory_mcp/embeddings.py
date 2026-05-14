@@ -43,6 +43,7 @@ class OllamaEmbeddingClient:
     timeout: float = EMBEDDING_TIMEOUT_SECONDS
     retry_count: int = EMBEDDING_RETRY_COUNT
     poster: HttpPoster = _default_poster
+    keep_alive: int | float | None = None  # seconds: 0=unload immediately, None=use Ollama default (5m)
 
     def __post_init__(self) -> None:
         if self.timeout != EMBEDDING_TIMEOUT_SECONDS:
@@ -58,7 +59,10 @@ class OllamaEmbeddingClient:
         if not text:
             raise ValueError("text must not be empty")
 
-        payload = json.dumps({"model": self.model, "prompt": text}).encode("utf-8")
+        payload_dict: dict[str, object] = {"model": self.model, "prompt": text}
+        if self.keep_alive is not None:
+            payload_dict["keep_alive"] = self.keep_alive
+        payload = json.dumps(payload_dict).encode("utf-8")
         request = Request(
             _join_url(self.base_url, "/api/embeddings"),
             data=payload,
@@ -83,6 +87,27 @@ class OllamaEmbeddingClient:
 
         return _extract_embedding(data)
 
+    def unload(self) -> None:
+        """Tell Ollama to immediately unload the model from GPU memory.
+
+        Sends a trivial embedding request with ``keep_alive=0``.
+        Use at the end of batch injection scripts.
+        """
+        payload = json.dumps(
+            {"model": self.model, "input": ".", "keep_alive": 0}
+        ).encode("utf-8")
+        request = Request(
+            _join_url(self.base_url, "/api/embed"),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with self.poster(request, timeout=self.timeout) as _:
+                pass
+        except Exception:
+            pass  # Best-effort — don't crash if Ollama is already gone.
+
     # ══ batch embedding  ══════════════════════════════════════════════
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -97,7 +122,10 @@ class OllamaEmbeddingClient:
         if any(not t for t in texts):
             raise ValueError("all texts in batch must be non-empty")
 
-        payload = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
+        payload_dict: dict[str, object] = {"model": self.model, "input": texts}
+        if self.keep_alive is not None:
+            payload_dict["keep_alive"] = self.keep_alive
+        payload = json.dumps(payload_dict).encode("utf-8")
         request = Request(
             _join_url(self.base_url, "/api/embed"),
             data=payload,
