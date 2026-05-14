@@ -1,0 +1,41 @@
+# Runtime databases and local memory stores
+*.db
+*.sqlite
+*.sqlite3
+memory.db
+
+# Local injected memory corpora (private, do not publish)
+private_memory_docs/
+private_memory_docs/**
+
+# Fast-access local memory snapshots
+memory_test_files/
+!memory_test_files/
+memory_test_files/*
+!memory_test_files/AGENTS.md
+!memory_test_files/MEMORY.md
+!memory_test_files/PROFILE.md
+!memory_test_files/SOUL.md
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# Internal scripts (user-specific)
+patch_mengpo_vec.py
+bridge.py
+inject_memory.py
+s1_probe.py
+
+# Package build artifacts
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
