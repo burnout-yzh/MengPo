@@ -7,11 +7,10 @@
 - 策略：匹配 `YYYY-MM-DD` 格式或者`MM-DD-YYYY`格式 → 日期字符串；匹配不到 → 文件 metadata 创建时间 (mtime)；再匹配不到 → 当前时间
 - **为何重要**：当前所有 chunk 的 `created_at` 都是注入时刻。日记文件 `2026-05-14.md` 的 chunk 应该显示为 5月14日创建，不是注入时的 7月某日。这直接影响 WangYou_Decay 的新鲜度计算。
 
-### Dedup 扫描分批
-- 当前：2807 条候选一次 `embed_batch()` → Ollama 处理超时
-- 根因：不是没用 batch，是单批太大。2807 条文本 embedding 超出 Ollama 处理能力
-- 改：每 ≤100 条一批，分 28 个小批逐批 `embed_batch()` + vec0 搜索
-- 不影响语义（同一嵌入模型，相同向量）
+### ~~Dedup 扫描分批~~
+- ~~当前 2807 条候选一次 `embed_batch()` → Ollama 处理超时~~
+- ~~改：复用 `BATCH_SIZE=15`，分批 `embed_batch()` + vec0 搜索~~
+- **不需要做**：注入阶段已将所有 chunk 向量存入 `chunks_vec`。Dedup 扫描直接复用这些向量做 S1 vec0 搜索即可，**不需要重新调用 Ollama 嵌入**。只需改扫描循环从 vec0 读向量而不重新 embed。
 
 
 ---
