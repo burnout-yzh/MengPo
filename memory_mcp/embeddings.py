@@ -83,6 +83,45 @@ class OllamaEmbeddingClient:
 
         return _extract_embedding(data)
 
+    # ══ batch embedding  ══════════════════════════════════════════════
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed multiple texts in a single API call.
+
+        Uses Ollama's ``/api/embed`` endpoint with ``"input"`` array.
+        Measured ~1s for 45 texts (qwen3-embedding-0.6b) vs ~5.8s when
+        calling ``embed()`` 45 times sequentially.
+        """
+        if not texts:
+            return []
+        if any(not t for t in texts):
+            raise ValueError("all texts in batch must be non-empty")
+
+        payload = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
+        request = Request(
+            _join_url(self.base_url, "/api/embed"),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with self.poster(request, timeout=self.timeout) as response:
+                body = response.read().decode("utf-8")
+        except HTTPError as exc:
+            raise EmbeddingError(f"batch embedding returned HTTP {exc.code}") from exc
+        except URLError as exc:
+            raise EmbeddingError(f"batch embedding unavailable: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise EmbeddingError("batch embedding timed out") from exc
+
+        try:
+            data = cast(object, json.loads(body))
+        except json.JSONDecodeError as exc:
+            raise EmbeddingError("batch embedding returned invalid JSON") from exc
+
+        return _extract_batch_embeddings(data, expected_count=len(texts))
+
 
 def _join_url(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + path
@@ -109,3 +148,30 @@ def _extract_embedding(data: object) -> list[float]:
             raise EmbeddingError("embedding vector must contain only numbers")
         vector.append(float(value))
     return vector
+
+
+def _extract_batch_embeddings(data: object, *, expected_count: int) -> list[list[float]]:
+    """Parse Ollama ``/api/embed`` batch response.
+
+    Expected shape: ``{"embeddings": [[f, ...], [f, ...], ...]}``
+    """
+    if not isinstance(data, dict):
+        raise EmbeddingError("batch embedding response must be a JSON object")
+
+    raw = cast(dict[str, object], data).get("embeddings")
+    if not isinstance(raw, list) or len(raw) != expected_count:
+        raise EmbeddingError(
+            f"expected {expected_count} embeddings, got {len(raw) if isinstance(raw, list) else type(raw).__name__}"
+        )
+
+    result: list[list[float]] = []
+    for entry in cast(list[object], raw):
+        if not isinstance(entry, list):
+            raise EmbeddingError("each batch entry must be a float list")
+        vec: list[float] = []
+        for v in cast(list[object], entry):
+            if not isinstance(v, int | float):
+                raise EmbeddingError("embedding values must be numbers")
+            vec.append(float(v))
+        result.append(vec)
+    return result

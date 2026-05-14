@@ -61,6 +61,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         source_file      TEXT,
         paragraph_start  INTEGER,
         paragraph_end    INTEGER,
+        pending_review   INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
     );
     """,
@@ -92,6 +93,15 @@ def apply_schema(conn) -> None:
         if "effective_recall_count" not in columns:
             cur.execute(
                 "ALTER TABLE memories ADD COLUMN effective_recall_count INTEGER NOT NULL DEFAULT 0"
+            )
+        # Migration: pending_review in chunks_meta (v0.10.78)
+        cm_columns = {
+            row[1]
+            for row in cur.execute("PRAGMA table_info(chunks_meta)").fetchall()
+        }
+        if "pending_review" not in cm_columns:
+            cur.execute(
+                "ALTER TABLE chunks_meta ADD COLUMN pending_review INTEGER NOT NULL DEFAULT 0"
             )
     finally:
         cur.close()

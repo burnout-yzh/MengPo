@@ -144,6 +144,63 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_pending_reviews(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Return chunks flagged as pending dedup adjudication.
+
+        Each row provides enough context for an LLM to judge whether the
+        chunk is a true duplicate or a false positive.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT m.id AS memory_id, m.content AS memory_content,
+                   cm.rowid AS chunk_rowid, cm.content AS chunk_content,
+                   cm.source_file, cm.chunk_index,
+                   m.created_at
+              FROM chunks_meta cm
+              JOIN memories m ON m.id = cm.memory_id
+             WHERE cm.pending_review = 1
+               AND m.deleted_at IS NULL
+             ORDER BY m.created_at DESC
+             LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def resolve_pending_review(
+        self, memory_id: int, *, verdict: str
+    ) -> bool:
+        """Resolve one pending dedup review.
+
+        *verdict* must be ``"duplicate"`` (soft-delete the memory and its
+        chunks) or ``"false_positive"`` (clear the pending flag, keep the
+        memory).  Returns True when a row was affected.
+        """
+        if verdict not in ("duplicate", "false_positive"):
+            raise ValueError("verdict must be 'duplicate' or 'false_positive'")
+
+        if verdict == "duplicate":
+            return self.soft_delete_memory(memory_id)
+        else:
+            with self.transaction() as conn:
+                cur = conn.execute(
+                    "UPDATE chunks_meta SET pending_review = 0 WHERE memory_id = ?",
+                    (memory_id,),
+                )
+                return cur.rowcount > 0
+
+    def pending_review_count(self) -> int:
+        """Return the number of chunks awaiting adjudication."""
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*)
+              FROM chunks_meta cm
+              JOIN memories m ON m.id = cm.memory_id
+             WHERE cm.pending_review = 1 AND m.deleted_at IS NULL
+            """
+        ).fetchone()
+        return row[0] if row else 0
+
     def Sansheng_Stone(  # 真名: write_back_effective_recalls() — S3 time-position boost
         self,
         *,

@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 # Allow running from repo root without installing the package.
@@ -36,6 +37,7 @@ from memory_mcp.embeddings import OllamaEmbeddingClient, EmbeddingError
 DB_PATH = os.getenv("MENGPO_DB_PATH", str(Path.cwd() / "mengpo_memory.db"))
 MEMORY_DIR = os.getenv("MENGPO_MEMORY_DIR", str(Path.cwd() / "memory"))
 CHUNK_SIZE = int(os.getenv("MENGPO_CHUNK_SIZE", "500"))
+BATCH_SIZE = int(os.getenv("MENGPO_BATCH_SIZE", "15"))
 OLLAMA_URL = os.getenv("MENGPO_OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.getenv("MENGPO_OLLAMA_MODEL", "qwen3-embedding-0.6b")
 
@@ -61,15 +63,35 @@ def chunk_text(text: str, max_size: int = CHUNK_SIZE) -> list[str]:
     return chunks
 
 
-# ── Dedup helper ───────────────────────────────────────────────────────────
+# ── Dedup & incremental update ────────────────────────────────────────────
 
-def _chunk_already_stored(db: Database, source_file: str, chunk_index: int) -> bool:
-    """Return True when a (source_file, chunk_index) pair already exists."""
+@dataclass
+class ExistingChunk:
+    memory_id: int
+    content_hash: str
+
+
+def _lookup_existing(db: Database, source_file: str, chunk_index: int) -> ExistingChunk | None:
+    """Return the existing (memory_id, content_hash) for a chunk, or None.
+
+    Only considers non-deleted memories — soft-deleted rows are invisible to
+    this lookup, so a re-injection after deletion is treated as brand new.
+    """
     row = db.conn.execute(
-        "SELECT 1 FROM chunks_meta WHERE source_file = ? AND chunk_index = ? LIMIT 1",
+        """
+        SELECT m.id, m.content_hash
+          FROM memories m
+          JOIN chunks_meta cm ON cm.memory_id = m.id
+         WHERE cm.source_file = ?
+           AND cm.chunk_index = ?
+           AND m.deleted_at IS NULL
+         LIMIT 1
+        """,
         (source_file, chunk_index),
     ).fetchone()
-    return row is not None
+    if row is None:
+        return None
+    return ExistingChunk(memory_id=row["id"], content_hash=row["content_hash"])
 
 
 # ── File scanner ───────────────────────────────────────────────────────────
@@ -89,6 +111,7 @@ def main() -> None:
     print(f"  DB:        {DB_PATH}")
     print(f"  Memory dir: {MEMORY_DIR}")
     print(f"  Chunk size: {CHUNK_SIZE} chars")
+    print(f"  Batch size: {BATCH_SIZE}")
     print(f"  Ollama:    {OLLAMA_URL} / {OLLAMA_MODEL}")
 
     db = Database(DB_PATH)
@@ -99,6 +122,55 @@ def main() -> None:
 
     total = 0
     skipped = 0
+    updated = 0
+
+    # Batch queue — collect chunk texts + metadata, embed in groups of BATCH_SIZE.
+    class _Queued:
+        source_file: str
+        chunk_content: str
+        chunk_hash: str
+        chunk_index: int
+
+    batch: list[_Queued] = []
+
+    def _flush_batch() -> None:
+        nonlocal total, skipped
+        if not batch:
+            return
+        try:
+            vecs = ec.embed_batch([q.chunk_content for q in batch])
+        except EmbeddingError as exc:
+            print(f"  [fail] batch of {len(batch)}: embedding error ({exc})")
+            skipped += len(batch)
+            batch.clear()
+        if total > 0 and total % 100 == 0:
+            print(f"  {total} chunks...")
+            return
+
+        for q, vec in zip(batch, vecs):
+            try:
+                store_memory_atomic(
+                    db,
+                    namespace="default",
+                    content=q.chunk_content,
+                    content_hash=q.chunk_hash,
+                    chunks=[
+                        ChunkInput(
+                            content=q.chunk_content,
+                            embedding=json.dumps(vec, separators=(",", ":")).encode("utf-8"),
+                            chunk_index=q.chunk_index,
+                        )
+                    ],
+                    source_file=q.source_file,
+                )
+                total += 1
+            except Exception as exc:
+                print(f"  [fail] {q.source_file} chunk {q.chunk_index}: store error ({exc})")
+                skipped += 1
+        batch.clear()
+        if total > 0 and total % 100 == 0:
+            print(f"  {total} chunks...")
+
     for fp in files:
         # Derive a relative path for stable source_file dedup.
         try:
@@ -121,50 +193,87 @@ def main() -> None:
             if len(chunk_content.strip()) < 10:
                 continue
 
-            # Idempotency: skip chunks already in the database.
-            if _chunk_already_stored(db, source_file, ci):
-                skipped += 1
-                continue
+            # ── Incremental update: content-hash comparison ──
+            chunk_hash = hashlib.sha256(chunk_content.encode("utf-8")).hexdigest()
+            existing = _lookup_existing(db, source_file, ci)
 
-            # Embedding — fail fast on network / model errors.
-            try:
-                vec = ec.embed(chunk_content)
-            except EmbeddingError as exc:
-                print(f"  [fail] {source_file} chunk {ci}: embedding error ({exc})")
-                skipped += 1
-                continue
+            if existing is not None:
+                if existing.content_hash == chunk_hash:
+                    # Unchanged — skip.
+                    skipped += 1
+                    continue
+                else:
+                    # Content has changed — soft-delete old version, insert new.
+                    db.soft_delete_memory(existing.memory_id)
+                    updated += 1
+                    # Fall through to insertion below.
 
-            # Atomic write across memories / chunks_vec / chunks_meta.
-            try:
-                store_memory_atomic(
-                    db,
-                    namespace="default",
-                    content=chunk_content,
-                    content_hash=hashlib.sha256(chunk_content.encode("utf-8")).hexdigest(),
-                    chunks=[
-                        ChunkInput(
-                            content=chunk_content,
-                            embedding=json.dumps(vec, separators=(",", ":")).encode("utf-8"),
-                            chunk_index=ci,
-                        )
-                    ],
-                    source_file=source_file,
-                )
-            except Exception as exc:
-                print(f"  [fail] {source_file} chunk {ci}: store error ({exc})")
-                skipped += 1
-                continue
+            # ── Queue for batch embedding ──
+            batch.append(_Queued())
+            batch[-1].source_file = source_file
+            batch[-1].chunk_content = chunk_content
+            batch[-1].chunk_hash = chunk_hash
+            batch[-1].chunk_index = ci
 
-            total += 1
+            if len(batch) >= BATCH_SIZE:
+                _flush_batch()
 
-        if total > 0 and total % 100 == 0:
-            print(f"  {total} chunks...")
+    # Flush remaining chunks.
+    _flush_batch()
 
     print(f"  Total:   {total} chunks injected")
-    print(f"  Skipped: {skipped} chunks (already present or errored)")
+    print(f"  Updated: {updated} chunks (content changed, old version softly deleted)")
+    print(f"  Skipped: {skipped} chunks (unchanged or errored)")
     counts = db.row_counts()
     print(f"  DB now:  {counts['memories']} memories, {counts['chunks_meta']} meta, "
           f"{counts['chunks_vec']} vec")
+
+    # ── Dedup similarity scan ──────────────────────────────────────────
+    # Compare each newly-injected chunk against the existing vector pool.
+    # Chunks whose nearest-neighbour similarity crosses the dedup threshold
+    # are flagged pending_review for LLM adjudication.
+    if total > 0:
+        print(f"\n  Scanning {total} new chunks for dedup candidates...")
+        from memory_mcp.dedup import DEFAULT_DEDUP_THRESHOLD
+        flagged = 0
+        with db.transaction() as conn:
+            # Collect rowids of recently injected chunks.
+            new_rows = conn.execute(
+                "SELECT rowid, content, memory_id FROM chunks_meta "
+                "WHERE pending_review = 0 ORDER BY rowid DESC LIMIT ?",
+                (total * 2,),  # generous window
+            ).fetchall()
+
+            if new_rows:
+                for nr in new_rows:
+                    # Embed chunk content for similarity search.
+                    try:
+                        vec = ec.embed(nr["content"])
+                        qj = json.dumps(vec, separators=(",", ":"))
+                    except EmbeddingError:
+                        continue
+
+                    # Find nearest neighbour (excluding self).
+                    neighbours = conn.execute(
+                        "SELECT rowid, distance FROM chunks_vec "
+                        "WHERE embedding MATCH ? AND rowid != ? "
+                        "ORDER BY distance LIMIT 1",
+                        (qj, nr["rowid"]),
+                    ).fetchall()
+
+                    if neighbours and (1.0 - neighbours[0]["distance"]) >= DEFAULT_DEDUP_THRESHOLD:
+                        conn.execute(
+                            "UPDATE chunks_meta SET pending_review = 1 WHERE rowid = ?",
+                            (nr["rowid"],),
+                        )
+                        flagged += 1
+
+        if flagged > 0:
+            print(f"  Pending review: {flagged} chunks flagged for LLM adjudication")
+            print(f"  → LLM agent: call get_pending_reviews() to review, "
+                  f"then resolve_dedup_review() to commit")
+        else:
+            print(f"  Pending review: 0 (no near-duplicates found)")
 
     db.close()
 

@@ -1,3 +1,47 @@
+# MengPo v0.10.78
+
+## bowl.yaml — the MengPo Bowl
+
+Centralised YAML configuration carrying all algorithm hyperparameters and operational settings.
+
+### 乾 (Qián) — Algorithm Hyperparameters
+- `embedding` — model name + vector dimension (with suggested alternatives and notes)
+- `decay` — WangYou_Decay: τ (Ramanujan half-life), initial strength, floor
+- `retrieval` — Naihe_Bridge candidate limit / Samsara_Rank result limit / freshness weight
+- `sansheng_stone` — time-anchor shrink factor
+- `dedup` — vector similarity adjudication threshold
+- `chunk` — paragraph maximum character size
+
+Every parameter includes human-readable comments with suggested reasonable ranges.
+
+### 坤 (Kūn) — Operational Settings
+- `server` — Ollama URL, MCP port, rerank model name
+- `storage` — database path, log path
+- `injection` — memory file scan root directory
+- `rebuild` — scan file count/size warn and hard limits
+
+### Incremental Content-Hash Update
+- `inject_memory.py` now compares SHA256 content hashes: same hash → skip, different hash → soft-delete old + insert new.
+- Summary output includes `updated` count.
+
+### Batch Embedding
+- `inject_memory.py` now uses `embed_batch()` for batch embedding, default 15 chunks per batch.
+- bowl.yaml adds `injection.batch_size` (suggested 5-20).
+- Measured: 45 chunks from ~5.8s (sequential) to ~1s (batch), ~5.7x speedup.
+
+### Reranker Reserved
+- `EmbeddingReranker` implemented (cosine similarity), default off — S1+S2 sufficient for daily retrieval.
+- `rerank_model` field reserved in bowl.yaml for future cross-encoder integration.
+
+### Dedup LLM Adjudication Pipeline
+- `chunks_meta` gains `pending_review` column (auto-migrated for existing databases).
+- `inject_memory.py` auto-scans vector similarity after injection, flagging candidates above threshold (0.95) for review.
+- MCP tool `get_pending_reviews()` — LLM fetches the pending adjudication queue.
+- MCP tool `resolve_dedup_review(memory_id, verdict)` — LLM commits duplicate/false_positive decisions.
+- `memory_stats()` output now includes `pending_reviews` count.
+
+---
+
 # MengPo v0.10.77
 
 ## v0.10.75 Known Issues — All Resolved
@@ -24,8 +68,7 @@ All 8 issues closed. See v0.10.75 entries below for details.
 
 ## Known Limitations
 
-### Incremental content-hash update deferred to v0.10.78
-Current `inject_memory.py` dedup only checks for the existence of a `(source_file, chunk_index)` pair. Modified file content (same chunk_index, different hash) will not trigger an update. SHA256 content-hash incremental detection planned for the next version.
+None. All v0.10.75 known issues are closed; incremental content-hash update is implemented.
 
 ---
 

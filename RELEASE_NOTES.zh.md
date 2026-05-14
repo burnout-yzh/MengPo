@@ -1,3 +1,49 @@
+# MengPo v0.10.78
+
+## bowl.yaml — 孟婆汤碗
+
+集中式 YAML 配置文件，承载所有算法超参与运维参数。
+
+### 乾 — 算法超参
+- `embedding` — 模型名 + 向量维度（含建议模型列表与说明）
+- `decay` — 忘忧衰减：τ（拉面努金半衰期）、初始强度、下限
+- `retrieval` — 奈何桥候选上限 / 轮回递送条数 / 新鲜度权重
+- `sansheng_stone` — 三生石时间锚点收缩比
+- `dedup` — 向量相似度裁决阈值
+- `chunk` — 段落分段最大字符数
+
+每个参数均附易懂注释与合理建议区间。
+
+### 坤 — 运维参数
+- `server` — Ollama 地址、MCP 端口、重排序模型名
+- `storage` — 数据库路径、日志路径
+- `injection` — 记忆文件扫描根目录
+- `rebuild` — 扫描文件数/大小预警与硬上限
+
+### 增量更新 — content hash 比对
+- `inject_memory.py` 现在比较 SHA256 content hash：同 hash 跳过，不同 hash → 软删旧版本 + 插入新版本。
+- 统计输出新增 `updated` 计数。
+
+### 批量嵌入
+- `inject_memory.py` 现在使用 `embed_batch()` 批量嵌入，默认每批 15 chunk。
+- bowl.yaml 新增 `injection.batch_size` 参数（建议 5-20）。
+- 实测：45 chunk 从 ~5.8s（逐条）降至 ~1s（批量），~5.7x 提升。
+
+### 重排模型预留
+- `EmbeddingReranker` 已实现（余弦相似度），默认关闭—S1+S2 已足够日常检索。
+- 预留 `bowl.yaml` 中 `rerank_model` 字段，需要时可接入 cross-encoder。
+- `inject_memory.py` 现在比较 SHA256 content hash：同 hash 跳过，不同 hash → 软删旧版本 + 插入新版本。
+- 统计输出新增 `updated` 计数。
+
+### Dedup LLM 裁决链路
+- `chunks_meta` 新增 `pending_review` 字段（自动迁移现有数据库）。
+- `inject_memory.py` 注入后自动扫描向量相似度，超过阈值（0.95）的候选标记为待裁决。
+- MCP 工具 `get_pending_reviews()` — LLM 拉取待裁决候选列表。
+- MCP 工具 `resolve_dedup_review(memory_id, verdict)` — LLM 做出 duplicate/false_positive 判定。
+- `memory_stats()` 输出新增 `pending_reviews` 计数。
+
+---
+
 # MengPo v0.10.77
 
 ## v0.10.75 已知问题全部修复
@@ -24,8 +70,7 @@
 
 ## 已知限制
 
-### 增量更新（content hash 比对）deferred to v0.10.78
-当前 `inject_memory.py` 的去重仅检查 `(source_file, chunk_index)` 组合是否存在。文件内容修改后（同一 chunk_index 不同 hash）不会被更新。下个版本计划基于 SHA256 content hash 做增量判别。
+无。v0.10.75 已知问题全部关闭，增量更新已实装。
 
 ---
 

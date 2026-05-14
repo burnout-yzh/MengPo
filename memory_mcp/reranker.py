@@ -1,8 +1,12 @@
-"""Ollama reranker client.
+"""Reranker clients.
 
-The current local Ollama version may not expose a public rerank endpoint yet.
-This client is the integration surface for when a compatible endpoint is
-available, and it surfaces a clear error when the server rejects the request.
+OllamaRerankerClient — targets the native ``/api/rerank`` endpoint (not yet
+available in Ollama as of 2026-Q2).  Kept as an integration surface for when
+the endpoint ships.
+
+EmbeddingReranker — cosine-similarity rerank using *any* embedding model.
+No extra dependencies, no new model to download.  Works with Ollama's
+``/api/embed`` today.
 """
 
 from __future__ import annotations
@@ -146,3 +150,57 @@ def _extract_results(data: object, documents: list[str]) -> list[RerankResult]:
         return sorted(results, key=lambda item: (-item.score, item.index))
 
     raise RerankError("unsupported rerank response shape")
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  EmbeddingReranker  —  cosine-similarity rerank using the same embedding model.
+#  Works today with Ollama (no /api/rerank endpoint required).
+# ══════════════════════════════════════════════════════════════════════
+
+import math as _math
+from .embeddings import OllamaEmbeddingClient
+
+
+class EmbeddingReranker:
+    """Rerank documents by cosine similarity to the query.
+
+    Uses *any* embedding model accessible through ``OllamaEmbeddingClient``.
+    No separate reranker model needed — the same embedding space that powers
+    S1 vector search is reused here.
+
+    Batch embeds all documents in a single API call (~1s for 45 texts).
+    """
+
+    def __init__(self, embed_client: OllamaEmbeddingClient):
+        self._ec = embed_client
+
+    def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        top_n: int | None = None,
+    ) -> list[RerankResult]:
+        if not query.strip():
+            raise ValueError("query must not be empty")
+        if not documents:
+            return []
+        if top_n is not None and top_n <= 0:
+            raise ValueError("top_n must be positive")
+
+        # Embed query once, then batch-embed all documents.
+        qv = self._ec.embed(query)
+        dvs = self._ec.embed_batch(documents)
+
+        results: list[RerankResult] = []
+        for idx, dv in enumerate(dvs):
+            dot = sum(a * b for a, b in zip(qv, dv))
+            norm_q = _math.sqrt(sum(a * a for a in qv))
+            norm_d = _math.sqrt(sum(a * a for a in dv))
+            score = dot / (norm_q * norm_d) if norm_q * norm_d > 0 else 0.0
+            results.append(RerankResult(index=idx, document=documents[idx], score=score))
+
+        results.sort(key=lambda r: -r.score)
+        if top_n is not None:
+            results = results[:top_n]
+        return results

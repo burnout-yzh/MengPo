@@ -1,6 +1,30 @@
 # PLAN.md
 
-## v0.10.77 — Known Issues Cleared + Script Rewrites
+## v0.10.78 — bowl.yaml + 增量更新
+
+### bowl.yaml（孟婆汤碗）
+集中式 YAML 配置，乾（算法超参）+ 坤（运维参数），所有参数附建议区间注释。
+
+### 增量更新 — content hash 比对
+`inject_memory.py` 现在比较 SHA256 content hash：
+- 同 hash → 跳过（未变）
+- 不同 hash → 软删旧版本 + 插入新版本
+- 不存在 → 正常插入
+
+新增 `updated` 输出计数。
+
+### Dedup LLM 裁决链路
+- `chunks_meta.pending_review` 字段 + 自动迁移
+- `inject_memory.py` 注入后向量扫描 → 标记待裁决
+- MCP 工具：`get_pending_reviews()` + `resolve_dedup_review()`
+- `memory_stats()` 含 `pending_reviews` 计数
+
+### 当前状态
+- 85/85 测试通过
+- v0.10.75 全部已知问题关闭
+- 4 个 scripts 已上线（inject/bridge/s1_probe/inject_sample）
+- server.py 已重写为 facade
+- S1-S2-Expand 缓存优化已实装
 
 v0.10.75 的全部 8 个已知问题已修复。85/85 单元测试通过。
 
@@ -56,11 +80,6 @@ scripts/
   embeddings.py   — Ollama 嵌入客户端
   reranker.py     — Ollama 重排序客户端
 ```
-
-## 下一步 (v0.10.78)
-
-### 增量更新 — content hash 比对
-当前 `inject_memory.py` 去重仅检查 `(source_file, chunk_index)` 是否存在。文件内容修改后不会被更新。计划基于 SHA256 content hash 做增量判别：hash 相同 → 跳过，hash 不同 → 更新 chunk 内容 + 重新嵌入。
 
 ---
 

@@ -274,6 +274,67 @@ def expand_retrieval(session_id: str) -> str:
 
 
 @mcp.tool()
+def get_pending_reviews(limit: int = 10) -> str:
+    """Return chunks flagged for dedup adjudication.
+
+    Call this after inject_memory reports pending_review > 0.
+    The LLM should inspect each chunk's content and the original memory
+    it was compared against, then call resolve_dedup_review().
+
+    Args:
+        limit: Max number of pending reviews to return (default 10).
+    """
+    db = _get_db()
+    rows = db.get_pending_reviews(limit=limit)
+    if not rows:
+        return json.dumps({"count": 0, "reviews": []})
+
+    output = []
+    for r in rows:
+        output.append({
+            "memory_id": r["memory_id"],
+            "chunk_rowid": r["chunk_rowid"],
+            "source_file": r["source_file"],
+            "chunk_index": r["chunk_index"],
+            "content_preview": (r["chunk_content"] or "")[:300],
+            "memory_preview": (r["memory_content"] or "")[:300],
+            "created_at": r["created_at"],
+        })
+    return json.dumps(
+        {"count": len(output), "reviews": output},
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+@mcp.tool()
+def resolve_dedup_review(memory_id: int, verdict: str) -> str:
+    """Resolve one pending dedup adjudication.
+
+    Args:
+        memory_id: The memory_id from get_pending_reviews().
+        verdict: ``"duplicate"`` (reject — soft-delete the chunk) or
+                 ``"false_positive"`` (keep — clear the pending flag).
+    """
+    if verdict not in ("duplicate", "false_positive"):
+        return json.dumps({"error": "verdict must be 'duplicate' or 'false_positive'"})
+
+    db = _get_db()
+    try:
+        resolved = db.resolve_pending_review(memory_id, verdict=verdict)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
+    action = "soft-deleted" if verdict == "duplicate" else "cleared"
+    return json.dumps({
+        "memory_id": memory_id,
+        "verdict": verdict,
+        "action": action,
+        "resolved": resolved,
+    })
+
+
+@mcp.tool()
 def memory_stats() -> str:
     """Return basic statistics about the memory database."""
     try:
@@ -282,11 +343,13 @@ def memory_stats() -> str:
         return json.dumps({"error": "Memory database not found."})
 
     counts = db.row_counts()
+    pending = db.pending_review_count()
     return json.dumps(
         {
             "total_memories": counts.get("memories", 0),
             "total_chunks": counts.get("chunks_meta", 0),
             "vec_chunks": counts.get("chunks_vec", 0),
+            "pending_reviews": pending,
         },
         indent=2,
     )

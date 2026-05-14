@@ -34,7 +34,7 @@ class RetrievalProtocolError(ValueError):
         super().__init__(message)
         self.code = code
 
-SEMANTIC_CANDIDATE_LIMIT = 45  # 3x of 15-concept delivery window; expand +45 each round, 135 total
+SEMANTIC_CANDIDATE_LIMIT = 45  # S1 full pool: blend-sort all 45, deliver in 5-chunk batches
 RESULT_LIMIT = 5
 FRESHNESS_WEIGHT = 0.368  # 1/e -- natural decay constant
 RANK_SCORE_EPSILON = 1e-12
