@@ -12,7 +12,7 @@ import math
 import os
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlite_vec
@@ -60,6 +60,23 @@ logging.basicConfig(
 mcp = FastMCP(CFG.mcp_name, port=18081)
 
 
+def _ensure_s3_columns(conn: sqlite3.Connection) -> None:
+    """Add S3 write-back columns to memory_metadata if they do not exist."""
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(memory_metadata)").fetchall()
+    }
+    if "effective_recall_count" not in existing:
+        conn.execute(
+            "ALTER TABLE memory_metadata ADD COLUMN effective_recall_count "
+            "INTEGER NOT NULL DEFAULT 0"
+        )
+    if "last_effective_recall_at" not in existing:
+        conn.execute(
+            "ALTER TABLE memory_metadata ADD COLUMN last_effective_recall_at TEXT"
+        )
+
+
 def _s1_search(query: str) -> list[dict]:
     conn = sqlite3.connect(CFG.db_path)
     conn.enable_load_extension(True)
@@ -78,7 +95,7 @@ def _s1_search(query: str) -> list[dict]:
     results = []
     for row in rows:
         meta = conn.execute(
-            "SELECT content, source_file, timestamp FROM memory_metadata WHERE id = ?",
+            "SELECT content, source_file, timestamp, last_effective_recall_at, effective_recall_count FROM memory_metadata WHERE id = ?",
             (row["rowid"],),
         ).fetchone()
         if meta is None:
@@ -88,6 +105,9 @@ def _s1_search(query: str) -> list[dict]:
                 "content": meta["content"],
                 "source_file": meta["source_file"],
                 "timestamp": meta["timestamp"],
+                "last_effective_recall_at": meta["last_effective_recall_at"],
+                "effective_recall_count": meta["effective_recall_count"],
+                "rowid": row["rowid"],
                 "distance": row["distance"],
             }
         )
@@ -97,11 +117,15 @@ def _s1_search(query: str) -> list[dict]:
 
 
 def _rank(candidates: list[dict]) -> list[dict]:
-    now = datetime.now()
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     for item in candidates:
+        raw = item.get("last_effective_recall_at") or item["timestamp"]
         try:
-            dt = datetime.strptime(item["timestamp"], "%Y-%m-%d")
+            if "T" in raw or " " in raw:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+            else:
+                dt = datetime.strptime(raw, "%Y-%m-%d")
         except (ValueError, TypeError):
             dt = now
         delta_days = max(0.0, (now - dt).total_seconds() / 86400.0)
@@ -145,6 +169,7 @@ def get_relevant_memories(query: str) -> str:
 
     output = [
         {
+            "rowid": row.get("rowid"),
             "source_file": row["source_file"],
             "timestamp": row["timestamp"],
             "content": row["content"][:200],
@@ -156,6 +181,136 @@ def get_relevant_memories(query: str) -> str:
         for row in ranked
     ]
     return json.dumps({"query": query, "count": len(output), "results": output}, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+def Sansheng_Stone(  # 真名: reinforce_memories — S3 写回，刻下缘分锚点
+    memory_rowids: list[int],
+    shrink_factor: float = 0.368,
+) -> str:
+    """三生石 (Sansheng_Stone): Report which memories were effective.
+
+    Call this after returning search results to reinforce useful memories.
+    The elapsed interval from prior effective recall to 'now' is shrunk
+    to shrink_factor (default 1/e=0.368), mimicking biological memory
+    reconsolidation.
+
+    To mark a memory as *not* useful, omit it from memory_rowids —
+    no change is applied.
+
+    Args:
+        memory_rowids: List of vec_memories rowids that were useful (max 50).
+        shrink_factor: 0.0-1.0, how much to shrink the interval (0.368=1/e).
+    """
+    if not memory_rowids:
+        return json.dumps({"updated": 0, "message": "No memories to reinforce."})
+    if len(memory_rowids) > 50:
+        return json.dumps({"error": "Max 50 memory_rowids per call."})
+    if shrink_factor <= 0 or shrink_factor > 1:
+        return json.dumps({"error": "shrink_factor must be in (0, 1]."})
+
+    conn = sqlite3.connect(CFG.db_path)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.row_factory = sqlite3.Row
+    try:
+        _ensure_s3_columns(conn)
+        now_utc = datetime.now(UTC)
+
+        placeholders = ",".join("?" for _ in memory_rowids)
+        rows = conn.execute(
+            f"""
+            SELECT id, last_effective_recall_at, timestamp AS created_at
+              FROM memory_metadata
+             WHERE id IN ({placeholders})
+            """,
+            tuple(memory_rowids),
+        ).fetchall()
+
+        updated = 0
+        for row in rows:
+            base_raw = row["last_effective_recall_at"]
+            if base_raw:
+                base = datetime.fromisoformat(
+                    base_raw.replace("Z", "+00:00")
+                ).astimezone(UTC)
+            else:
+                base = datetime.fromisoformat(
+                    row["created_at"].replace("Z", "+00:00")
+                ).astimezone(UTC)
+
+            delta = now_utc - base
+            if delta.total_seconds() < 0:
+                delta = now_utc - now_utc
+
+            reinforced_at = now_utc - (delta * shrink_factor)
+            reinforced_iso = reinforced_at.isoformat(timespec="milliseconds").replace(
+                "+00:00", "Z"
+            )
+
+            conn.execute(
+                """
+                UPDATE memory_metadata
+                   SET last_effective_recall_at = ?,
+                       effective_recall_count = effective_recall_count + 1
+                 WHERE id = ?
+                """,
+                (reinforced_iso, row["id"]),
+            )
+            updated += 1
+
+        conn.commit()
+        logging.info(
+            "SANSHENG_STONE | reinforced=%d | factor=%.3f",
+            updated,
+            shrink_factor,
+        )
+        return json.dumps(
+            {
+                "updated": updated,
+                "message": f"Reinforced {updated} memory anchor(s) on 三生石.",
+            }
+        )
+    finally:
+        conn.close()
+
+
+@mcp.tool()
+def memory_stats() -> str:
+    """Return basic statistics about the memory database."""
+    if not os.path.exists(CFG.db_path):
+        return json.dumps({"error": "Memory database not found."})
+
+    conn = sqlite3.connect(CFG.db_path)
+    conn.enable_load_extension(True)
+    try:
+        sqlite_vec.load(conn)
+    except Exception:
+        pass
+    try:
+        _ensure_s3_columns(conn)
+        total = conn.execute("SELECT COUNT(*) FROM memory_metadata").fetchone()[0]
+        recalled = conn.execute(
+            "SELECT COUNT(*) FROM memory_metadata WHERE effective_recall_count > 0"
+        ).fetchone()[0]
+        orphaned = conn.execute(
+            "SELECT COUNT(*) FROM memory_metadata WHERE id NOT IN "
+            "(SELECT rowid FROM vec_memories)"
+        ).fetchone()[0]
+        sources = conn.execute(
+            "SELECT source_file, COUNT(*) AS cnt FROM memory_metadata "
+            "GROUP BY source_file ORDER BY cnt DESC LIMIT 10"
+        ).fetchall()
+        return json.dumps(
+            {
+                "total_chunks": total,
+                "recalled_chunks": recalled,
+                "orphaned_chunks": orphaned,
+                "top_sources": {r[0]: r[1] for r in sources},
+            },
+            indent=2,
+        )
+    finally:
+        conn.close()
 
 
 def main() -> None:

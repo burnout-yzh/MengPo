@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mengpo"
-version = "0.10.73"
+version = "0.10.74"
 description = "Memory Evolution & Next-Gen Preference Orchestrator."
 readme = "README.md"
 requires-python = ">=3.11"

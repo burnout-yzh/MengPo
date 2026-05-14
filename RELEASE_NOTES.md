@@ -2,6 +2,22 @@
 
 First public open-source release of MengPo.
 
+---
+
+# MengPo v0.10.74
+
+## Fixes
+
+- **S3 write-back (Sansheng_Stone) now actually affects ranking** — `_rank()` previously computed freshness exclusively from creation timestamp, ignoring `last_effective_recall_at` written by Sansheng_Stone. The field was persisted to DB but had zero effect on search results. Now `_rank()` prefers `last_effective_recall_at` when available.
+- `get_relevant_memories` output now includes `rowid` field, enabling Sansheng_Stone to target specific chunks.
+- Fixed `tuple indices must be integers, not str` crash in Sansheng_Stone (missing `conn.row_factory`).
+- Fixed naive/aware datetime crash when querying after Sansheng_Stone write-back.
+- `memory_stats()` now loads `sqlite_vec` extension (was missing vec0 module import).
+
+## Migration
+
+- S3 columns (`effective_recall_count`, `last_effective_recall_at`) are auto-created on first Sansheng_Stone call — no manual DDL needed.
+
 ## Highlights
 
 - Atomic `store_memory` write boundary across `memories`, `chunks_meta`, and `chunks_vec`.
