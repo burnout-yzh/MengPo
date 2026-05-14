@@ -66,7 +66,7 @@ Current MCP server note:
 
 ## Project Status
 
-This project is provided as-is. I am not actively maintaining it, and issues or pull requests may not be reviewed.
+This project is provided as-is. I am not actively maintaining it, though improvements may happen over time. Issues or pull requests may not be reviewed.
 
 Forks, rewrites, and continued development are welcome. If you find this project useful, a star would be appreciated.
 

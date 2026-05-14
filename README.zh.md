@@ -94,7 +94,7 @@ python3 scripts/check_consistency.py <db_path>
 当前路线图以仓库的 issue 与提交历史为准。
 
 ## 项目状态
-本项目按现状提供。我目前不会持续维护，issue 或 pull request 可能不会得到回复。
+本项目按现状提供。我目前不会持续维护，也许会持续改进，issue 或 pull request 可能不会得到回复。
 
 欢迎 fork、重写和继续开发；如果你觉得它有用，也欢迎点个 Star。
 
