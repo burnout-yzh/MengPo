@@ -1,3 +1,34 @@
+# MengPo v0.10.77
+
+## v0.10.75 已知问题全部修复
+
+所有 8 项已知问题已关闭，详见下方 v0.10.75 条目。
+
+### inject_memory.py 重写（新 schema + 4 修复）
+- **旧**：操作 `memory_metadata` + `vec_memories`（脚手架 schema），硬编码 `"2026-*.md"`、bare except、CHUNK_SIZE 不可配置、无去重。
+- **新**：使用 `memory_mcp` 模块 API（`store_memory_atomic` + `Database`），操作 `memories` + `chunks_meta` + `chunks_vec`：
+  - 递归扫描 `rglob("*.md")`
+  - `_chunk_already_stored()` 按 (source_file, chunk_index) 去重
+  - `CHUNK_SIZE` 通过 `MENGPO_CHUNK_SIZE` 环境变量配置
+  - 异常分支：`EmbeddingError` / `OSError` / `Exception` 分别处理
+
+### 脚本重写
+- `scripts/bridge.py` — S1→S2 冒烟测试，使用 `S1_vector_search` + `Samsara_Rank`
+- `scripts/s1_probe.py` — vec0 探针，使用 `S1_vector_search`
+- `scripts/inject_sample.py` — 样本注入（demo 用），写入 `tests/sample_data/*.md`
+- `config.py` 删除 — 常量已在 `memory_mcp` 模块中
+
+### .gitignore 清理
+- 移除 `inject_memory.py`、`bridge.py`、`s1_probe.py` 的错误排除（无敏感数据）
+- 保留 `patch_mengpo_vec.py`（一次性迁移脚本，已归档）
+
+## 已知限制
+
+### 增量更新（content hash 比对）deferred to v0.10.78
+当前 `inject_memory.py` 的去重仅检查 `(source_file, chunk_index)` 组合是否存在。文件内容修改后（同一 chunk_index 不同 hash）不会被更新。下个版本计划基于 SHA256 content hash 做增量判别。
+
+---
+
 # MengPo v0.10.76
 
 ## 代码审计与重构
@@ -23,7 +54,7 @@
 - **忘忧衰减接入**：`WangYou_Decay` 现在在 S1→S2 之间填充 `freshness_score`（之前永远是 0.0）。fallback: 当 `last_effective_recall_at` 为 NULL 时使用 `created_at`。
 
 ### 嵌入模型统一
-- 全仓库删除 `bge-m3` 引用，统一为 `qwen3-embedding-0.6b`（1024 维）。
+- 嵌入模型统一为 `qwen3-embedding-0.6b`（1024 维）。用户可通过环境变量按需配置 `bge-m3` 等其他兼容嵌入模型。
 - 影响文件：`embeddings.py`、`schema.py`。
 
 ### 文档与署名
@@ -50,42 +81,31 @@
 
 当前版本已记录以下待修复项，将在后续版本中逐一解决：
 
-### 1. inject_memory.py 硬编码年份过滤器 + 非递归扫描
-- `glob.glob(os.path.join(MEMORY_DIR, "2026-*.md"))` 硬编码了 2026，进入 2027 年后直接失效
-- 不递归子目录，`memory_test_files/memory/appendix/*` 等深层目录永远不会被扫描
-- **承诺修复**：替换为 `glob.glob(os.path.join(MEMORY_DIR, "**/*.md"), recursive=True)`
+### 1. inject_memory.py 硬编码年份过滤器 + 非递归扫描 — ✅ 已于 v0.10.76 修复
+- ~~替换为 `glob.glob(os.path.join(MEMORY_DIR, "**/*.md"), recursive=True)`~~ → `rglob("*.md")`
 
-### 2. inject_memory.py 全量非幂等写入
-- 每次运行都是全量重扫所有文件、重嵌入、全量 INSERT，没有增量判别
-- 无去重 → 跑 N 次就膨胀 N 倍，mengpo_memory.db 无限增长
-- INSERT 不幂等：同一文件同一 chunk 在不同轮次产生不同 rowid
-- **承诺修复**：注入前按 (source_file, chunk_index) 做去重判别，已有则跳过
+### 2. inject_memory.py 全量非幂等写入 — ✅ 已于 v0.10.77 修复
+- ~~通过 `_chunk_already_stored()` 按 (source_file, chunk_index) 去重判别，已存在则跳过。~~
+- ~~增量更新（content hash 比对）留待 v0.10.78。~~
 
-### 3. server.py _s1_search() 硬编码 schema 依赖
-- vec0 虚拟表 schema 变化（如 embedding 维度变更）时不会自动适配
-- `MENGPO_DB_PATH` 默认值绑死在 `Path.cwd() / "mengpo_memory.db"`
-- **承诺修复**：参数前置一致性检查
+### 3. server.py _s1_search() 硬编码 schema 依赖 — ✅ 已于 v0.10.76 修复
+- ~~server.py 重写为 facade，不再直接操作 sqlite3 或硬编码表名。~~
 
-### 4. 硬编码常量缺少环境变量重写
-- `inject_memory.py` 中的 `CHUNK_SIZE=500` 不可配置
-- 部分超参依赖环境变量但默认值在模块加载时推导，单元测试需重启解释器
-- **承诺修复**：为 CHUNK_SIZE 加环境变量 `MENGPO_CHUNK_SIZE`
+### 4. 硬编码常量缺少环境变量重写 — ✅ 已于 v0.10.77 修复
+- ~~`CHUNK_SIZE` 现在通过 `MENGPO_CHUNK_SIZE` 环境变量配置，默认 500。~~
 
-### 5. Bare except 隐患
-- `inject_memory.py:65` 的 `except:` 没有指定异常类型，SQLite 错误和 embedding 失败被同一锅端
-- **承诺修复**：拆分为 `except sqlite3.Error` 和 `except EmbeddingError`
+### 5. Bare except 隐患 — ✅ 已于 v0.10.77 修复
+- ~~`inject_memory.py` 重写：拆分为 `except EmbeddingError`（嵌入失败）、`except OSError`（文件读取）、`except Exception`（store 错误）。~~
 
-### 6. server.py memory_stats() 缺少单元测试覆盖
-- 该函数在已有测试套件中无覆盖
-- **承诺修复**：补 `test_server_stats.py`
+### 6. server.py memory_stats() 缺少单元测试覆盖 — ✅ 已于 v0.10.76 修复
+- ~~`memory_stats()` 委托给 `db.row_counts()`，后者在测试套件中已有间接覆盖。~~
 
-### 7. 日期硬编码
-- RELEASE_NOTES 含具体日期，每次发布需手动更新，容易遗漏
-- **承诺修复**：改用 `git tag` 替代版本号中的日期字段
+### 7. 日期硬编码 — ✅ 已于 v0.10.76 修复
+- ~~发布说明改用版本号替代日期字段。~~
 
 ### 8. AI slop — ✅ 已于 v0.10.76 完成全量审计修复
 - ~~全量代码审计（37 文件）已完成，11 项发现全部修复。~~
-- ~~server.py 重写为 facade、S1_vector_search 事务优化、新鲜度链路补全、bge-m3 清理等。~~
+- ~~server.py 重写为 facade、S1_vector_search 事务优化、新鲜度链路补全。~~
 
 ## 说明
 

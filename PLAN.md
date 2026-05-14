@@ -1,8 +1,70 @@
 # PLAN.md
 
-## v0.10.75 — Code Audit & Slop Cleanup (2026-05-14)
+## v0.10.77 — Known Issues Cleared + Script Rewrites
 
-全量代码审计已完成（37 文件），所有发现已修复。85/85 单元测试通过。
+v0.10.75 的全部 8 个已知问题已修复。85/85 单元测试通过。
+
+### v0.10.75 已知问题关闭清单
+
+| # | 问题 | 修复版本 |
+|---|------|:--:|
+| 1 | inject_memory 硬编码年份 + 非递归 | 0.10.77 — `rglob("*.md")` |
+| 2 | inject_memory 非幂等写入 | 0.10.77 — `_chunk_already_stored()` 去重 |
+| 3 | server.py 硬编码 schema | 0.10.76 — facade 重写 |
+| 4 | CHUNK_SIZE 不可配 | 0.10.77 — `MENGPO_CHUNK_SIZE` 环境变量 |
+| 5 | Bare except | 0.10.77 — 具体异常分支 |
+| 6 | memory_stats() 缺测试 | 0.10.76 — 间接覆盖 |
+| 7 | 日期硬编码 | 0.10.76 — 改用版本号 |
+| 8 | AI slop | 0.10.76 — 全量审计修复 |
+
+### 新增 / 重写脚本
+
+| 脚本 | 说明 |
+|------|------|
+| `scripts/inject_memory.py` | 新 schema 重写，4 修复，环境变量配置 |
+| `scripts/bridge.py` | S1→S2 冒烟测试（`S1_vector_search` + `Samsara_Rank`） |
+| `scripts/s1_probe.py` | vec0 探针（`S1_vector_search`） |
+| `scripts/inject_sample.py` | 样本注入（demo 用） |
+
+### 架构现状（截至 v0.10.77）
+
+```
+server.py (MCP facade)
+  ├─ get_relevant_memories → S1_vector_search + Samsara_Rank (全量 blend 缓存)
+  ├─ expand_retrieval → 排序缓存切片 [cursor:cursor+5]
+  ├─ Sansheng_Stone → db.Sansheng_Stone()
+  └─ memory_stats → db.row_counts()
+
+scripts/
+  inject_memory.py    — 文件扫描 → chunk → 嵌入 → atomic_store（去重+幂等）
+  bridge.py           — S1→S2 手动冒烟测试
+  s1_probe.py         — vec0 检索探针
+  inject_sample.py    — demo 样本注入
+  check_consistency.py — 一致性检查
+  manual_qa.py        — 手动 QA
+
+底层模块（memory_mcp/）
+  database.py    — 连接工厂 + Sansheng_Stone + 软删除 + 列表
+  schema.py      — memories + chunks_meta + chunks_vec (vec0)
+  retrieval.py   — S1_vector_search / Samsara_Rank / Naihe_Bridge
+  freshness.py   — WangYou_Decay
+  atomic_store.py — 三表原子写入
+  store_flow.py   — 去重预检 → 原子写入编排
+  dedup.py        — 向量相似度裁决 (threshold 0.95)
+  consistency.py  — 完整性检查
+  scanner.py      — 目录扫描
+  embeddings.py   — Ollama 嵌入客户端
+  reranker.py     — Ollama 重排序客户端
+```
+
+## 下一步 (v0.10.78)
+
+### 增量更新 — content hash 比对
+当前 `inject_memory.py` 去重仅检查 `(source_file, chunk_index)` 是否存在。文件内容修改后不会被更新。计划基于 SHA256 content hash 做增量判别：hash 相同 → 跳过，hash 不同 → 更新 chunk 内容 + 重新嵌入。
+
+---
+
+## Injection Placeholders
 
 ### 审计修复清单
 
@@ -11,7 +73,7 @@
 | 1 | `server.py` 用独立表 `memory_metadata`+`vec_memories` — 脚手架残留 | **重写**为 facade，全部委托给 Database / retrieval 模块 |
 | 2 | server.py `result_limit=15` — stale | 统一为 `RESULT_LIMIT=5`（S2 最终递送条数） |
 | 3 | server.py `_rank()` 直接乘积 — 废弃算法 | 删除，正规使用 `Samsara_Rank` 加权几何平均 |
-| 4 | `embeddings.py` + `schema.py` 残留 `"bge-m3"` | 全删，统一 `qwen3-embedding-0.6b` |
+| 4 | `embeddings.py` + `schema.py` 中嵌入模型名 | 统一为 `qwen3-embedding-0.6b` |
 | 5 | `S1_vector_search()` 每行一个事务（46 个） | 改为一次 vec 搜索 + 一次批量 IN JOIN（1 个事务） |
 | 6 | `__init__.py` docstring "foundation surface" — 过时 | 更新为完整 MCP 工具包描述 |
 | 7 | `freshness_score` 永远是 0.0 — 忘忧衰减空转 | S1→S2 链补 `WangYou_Decay` 填充（fallback: created_at） |

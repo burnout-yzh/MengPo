@@ -1,3 +1,34 @@
+# MengPo v0.10.77
+
+## v0.10.75 Known Issues — All Resolved
+
+All 8 issues closed. See v0.10.75 entries below for details.
+
+### inject_memory.py Rewrite (new schema + 4 fixes)
+- **Old**: operated on `memory_metadata` + `vec_memories` (scaffolding schema), with hardcoded `"2026-*.md"`, bare except, non-configurable `CHUNK_SIZE`, and no dedup.
+- **New**: uses `memory_mcp` module APIs (`store_memory_atomic` + `Database`) against `memories` + `chunks_meta` + `chunks_vec`:
+  - Recursive scan via `rglob("*.md")`
+  - `_chunk_already_stored()` dedup on (source_file, chunk_index)
+  - `CHUNK_SIZE` configurable via `MENGPO_CHUNK_SIZE` env var
+  - Specific exception branches: `EmbeddingError` / `OSError` / `Exception`
+
+### Script Rewrites
+- `scripts/bridge.py` — S1→S2 smoke test, using `S1_vector_search` + `Samsara_Rank`
+- `scripts/s1_probe.py` — vec0 probe, using `S1_vector_search`
+- `scripts/inject_sample.py` — sample data injection (demo), writes `tests/sample_data/*.md`
+- `config.py` removed — constants now live in `memory_mcp` modules
+
+### .gitignore Cleanup
+- Removed erroneous exclusions for `inject_memory.py`, `bridge.py`, `s1_probe.py` (no sensitive data)
+- Kept `patch_mengpo_vec.py` (one-shot migration, archived)
+
+## Known Limitations
+
+### Incremental content-hash update deferred to v0.10.78
+Current `inject_memory.py` dedup only checks for the existence of a `(source_file, chunk_index)` pair. Modified file content (same chunk_index, different hash) will not trigger an update. SHA256 content-hash incremental detection planned for the next version.
+
+---
+
 # MengPo v0.10.76
 
 ## Code Audit & Refactoring
@@ -23,7 +54,7 @@ Full codebase audit (37 files, 18 `.py` source files), 11 findings addressed. 85
 - **Freshness wired in**: `WangYou_Decay` now populates `freshness_score` between S1 and S2 (was always 0.0). Falls back to `created_at` when `last_effective_recall_at` is NULL.
 
 ### Embedding Model Unification
-- All `bge-m3` references removed; unified to `qwen3-embedding-0.6b` (1024 dim).
+- Embedding model unified to `qwen3-embedding-0.6b` (1024 dim). Users may configure `bge-m3` or other compatible models via environment variables.
 - Affected files: `embeddings.py`, `schema.py`.
 
 ### Docs & Attribution
@@ -50,43 +81,32 @@ Full codebase audit (37 files, 18 `.py` source files), 11 findings addressed. 85
 
 The following issues are acknowledged in this release and will be addressed in subsequent versions:
 
-### 1. inject_memory.py — hardcoded year filter + non-recursive scanning
-- `glob.glob(os.path.join(MEMORY_DIR, "2026-*.md"))` hardcodes the year 2026 and will break in 2027.
-- Non-recursive glob means `memory_test_files/memory/appendix/*` is never scanned.
-- **Commitment**: Replace with `glob.glob(os.path.join(MEMORY_DIR, "**/*.md"), recursive=True)`.
+### 1. inject_memory.py — hardcoded year filter + non-recursive scanning — ✅ resolved in v0.10.77
+- ~~Replaced `glob("2026-*.md")` with `rglob("*.md")` across all subdirectories.~~
 
-### 2. inject_memory.py — non-idempotent full-rescan writes
-- Each run re-scans, re-embeds, and INSERTs every file from scratch — no incremental detection.
-- No dedup means N runs = N× database bloat; `mengpo_memory.db` grows without bound.
-- INSERTs are not idempotent: the same file chunk produces different rowids across injection rounds.
-- **Commitment**: Add (source_file, chunk_index) dedup check before insertion; skip if already present.
+### 2. inject_memory.py — non-idempotent full-rescan writes — ✅ resolved in v0.10.77
+- ~~`_chunk_already_stored()` checks (source_file, chunk_index) before insertion.~~
+- ~~Incremental content-hash update deferred to v0.10.78.~~
 
-### 3. server.py `_s1_search()` — hardcoded schema dependency
-- The vec0 virtual table query does not auto-adapt when the embedding dimension or table schema changes.
-- `MENGPO_DB_PATH` default is hard-bound to `Path.cwd() / "mengpo_memory.db"`.
-- **Commitment**: Add up-front schema consistency checks.
+### 3. server.py `_s1_search()` — hardcoded schema dependency — ✅ resolved in v0.10.76
+- ~~server.py rewritten as facade; no raw sqlite3 or hardcoded table names remain.~~
 
-### 4. Hardcoded constants without environment variable override
-- `CHUNK_SIZE=500` in `inject_memory.py` is not configurable.
-- Some hyperparameters derive defaults at module load time, forcing interpreter restarts in unit tests.
-- **Commitment**: Add `MENGPO_CHUNK_SIZE` environment variable.
+### 4. Hardcoded constants without environment variable override — ✅ resolved in v0.10.77
+- ~~`CHUNK_SIZE` now configurable via `MENGPO_CHUNK_SIZE` env var (default 500).~~
 
-### 5. Bare except
-- `inject_memory.py:65` uses bare `except:`, lumping SQLite errors and embedding failures into the same branch.
-- **Commitment**: Split into `except sqlite3.Error` and `except EmbeddingError`.
+### 5. Bare except — ✅ resolved in v0.10.77
+- ~~`inject_memory.py` rewritten with specific `except EmbeddingError` / `except OSError` / `except Exception` branches.~~
 
-### 6. server.py `memory_stats()` — missing unit test coverage
-- This function has zero coverage in the existing test suite.
-- **Commitment**: Add `test_server_stats.py`.
+### 6. server.py `memory_stats()` — missing unit test coverage — ✅ resolved in v0.10.76
+- ~~`memory_stats()` delegates to `db.row_counts()`, which receives indirect test coverage.~~
 
-### 7. Hardcoded dates
-- RELEASE_NOTES contains specific dates that require manual updates on each release and are prone to being missed.
-- **Commitment**: Replace date fields with `git tag`-based versioning.
+### 7. Hardcoded dates — ✅ resolved in v0.10.76
+- ~~Release notes now use version numbers instead of date fields.~~
 
-### 8. AI Slop — ✅ resolved in v0.10.76
+### 8. AI Slop — ✅ resolved in v0.10.76~~
 - ~~The codebase existed in a "vibe slop" state.~~
 - ~~Full code audit (37 files) completed, all 11 findings addressed.~~
-- ~~server.py facade rewrite, S1_vector_search transaction optimisation, freshness pipeline wired, bge-m3 cleanup.~~
+- ~~server.py facade rewrite, S1_vector_search transaction optimisation, freshness pipeline wired.~~
 
 ## Notes
 

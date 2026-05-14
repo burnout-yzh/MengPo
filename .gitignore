@@ -25,11 +25,8 @@ __pycache__/
 # Logs
 *.log
 
-# Internal scripts (user-specific)
+# Internal scripts (user-specific) — archived migration scripts only
 patch_mengpo_vec.py
-bridge.py
-inject_memory.py
-s1_probe.py
 
 # Package build artifacts
 *.egg-info/
