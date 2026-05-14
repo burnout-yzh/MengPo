@@ -1,44 +1,44 @@
 # MengPo v0.10.78
 
 ## bowl.yaml — the MengPo Bowl
+Centralised YAML config: 乾 (algorithm hyperparams) + 坤 (ops). All params with human-readable comments and suggested ranges.
 
-Centralised YAML configuration carrying all algorithm hyperparameters and operational settings.
+## Chunk Strategy Improvements
+- `size_min`: 80→160, `size_max`: 500. Short paragraphs accumulate to min before emission; long paragraphs split at sentence boundaries (。！？).
+- Hard boundaries (hr, code fence) flush the buffer.
+- Result: 10KB diary from 93 chunks → 43 (-54%), avg 245 chars.
 
-### 乾 (Qián) — Algorithm Hyperparameters
-- `embedding` — model name + vector dimension (with suggested alternatives and notes)
-- `decay` — WangYou_Decay: τ (Ramanujan half-life), initial strength, floor
-- `retrieval` — Naihe_Bridge candidate limit / Samsara_Rank result limit / freshness weight
-- `sansheng_stone` — time-anchor shrink factor
-- `dedup` — vector similarity adjudication threshold
-- `chunk` — paragraph maximum character size
+## Batch Embedding + GPU Release
+- `OllamaEmbeddingClient.embed_batch()` — embed multiple texts in one API call.
+- `inject_memory.py` defaults to 15/batch. Measured: 145 files, 2807 chunks, full rebuild **99.8s** (vs ~8 min sequential).
+- `ollama stop` auto-releases GPU after injection.
+- Structured log (`inject.log`) with 50-chunk progress timestamps.
 
-Every parameter includes human-readable comments with suggested reasonable ranges.
+## Incremental Update — content-hash comparison
+- SHA256 content-hash comparison: same hash → skip, different → soft-delete old + insert new.
+- 145 files unchanged: **1.9s** all skipped.
 
-### 坤 (Kūn) — Operational Settings
-- `server` — Ollama URL, MCP port, rerank model name
-- `storage` — database path, log path
-- `injection` — memory file scan root directory
-- `rebuild` — scan file count/size warn and hard limits
+## Dedup LLM Adjudication Pipeline
+- `chunks_meta.pending_review` + auto-migration.
+- Batch vector similarity scan after injection → flag for review.
+- MCP tools: `get_pending_reviews()` + `resolve_dedup_review()`.
+- `memory_stats()` includes `pending_reviews` count.
 
-### Incremental Content-Hash Update
-- `inject_memory.py` now compares SHA256 content hashes: same hash → skip, different hash → soft-delete old + insert new.
-- Summary output includes `updated` count.
+## Reranker Reserved
+- `EmbeddingReranker` (cosine similarity), default off. S1+S2 sufficient.
+- `rerank_model` field reserved for future cross-encoder integration.
 
-### Batch Embedding
-- `inject_memory.py` now uses `embed_batch()` for batch embedding, default 15 chunks per batch.
-- bowl.yaml adds `injection.batch_size` (suggested 5-20).
-- Measured: 45 chunks from ~5.8s (sequential) to ~1s (batch), ~5.7x speedup.
+## Performance Benchmark
+- `BENCHMARK.md` with full perf data (145 files, 2807 chunks, 99.8s).
+- README ops notes: DB clear command + perf baseline table.
 
-### Reranker Reserved
-- `EmbeddingReranker` implemented (cosine similarity), default off — S1+S2 sufficient for daily retrieval.
-- `rerank_model` field reserved in bowl.yaml for future cross-encoder integration.
+## Tests
+- 122/122 tests. New: `embed_batch`(11), `chunk_text`(8), `EmbeddingReranker`(7).
 
-### Dedup LLM Adjudication Pipeline
-- `chunks_meta` gains `pending_review` column (auto-migrated for existing databases).
-- `inject_memory.py` auto-scans vector similarity after injection, flagging candidates above threshold (0.95) for review.
-- MCP tool `get_pending_reviews()` — LLM fetches the pending adjudication queue.
-- MCP tool `resolve_dedup_review(memory_id, verdict)` — LLM commits duplicate/false_positive decisions.
-- `memory_stats()` output now includes `pending_reviews` count.
+## Known Limitations
+- Dedup scan batch timeout → paginated in v0.10.79.
+- `_blend()` duplicates Samsara_Rank formula.
+- Smart diary time injection → v0.10.79.
 
 ---
 

@@ -138,7 +138,7 @@ print('DB cleared')
 |------|:--:|------|------|:--:|
 | Full rebuild (empty DB) | 145 | 2807 chunks | **99.8s** | ✅ ollama stop |
 | Incremental (no changes) | 145 | 0 chunks | **1.9s** | ✅ |
-| Single-file incremental (est.) | 1 | ~43 chunks | ~8-10s | ✅ |
+| Single-file incremental (est.) | 1 | ~43 chunks | ~1-2s | ✅ |
 
 Config: `chunk: size_min=160, size_max=500`, `batch_size=15`, `qwen3-embedding-0.6b`. See `BENCHMARK.md` for details.
 

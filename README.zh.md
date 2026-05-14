@@ -95,9 +95,11 @@ print('DB cleared')
 |------|:--:|------|------|:--:|
 | 全量重建 (DB 已清) | 145 | 2807 chunks | **99.8s** | ✅ ollama stop |
 | 增量 (无变化) | 145 | 0 chunks | **1.9s** | ✅ |
-| 单文件增量 (估计) | 1 | ~43 chunks | ~8-10s | ✅ |
+| 单文件增量 (估计) | 1 | ~43 chunks | ~1-2s | ✅ |
 
 配置：`chunk: size_min=160, size_max=500`，`batch_size=15`，`qwen3-embedding-0.6b`。详见 `BENCHMARK.md`。
+
+（测试数据约为 1 MB 尺寸的纯粹 md 文件 在空数据库 进行全量重注入，耗时<100秒。）
 
 ## 重建扫描限制（T15 预检）
 

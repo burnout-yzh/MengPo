@@ -1,46 +1,44 @@
 # MengPo v0.10.78
 
 ## bowl.yaml — 孟婆汤碗
+集中式 YAML 配置，乾（算法超参）+ 坤（运维参数）。所有参数附易懂注释与合理建议区间。
 
-集中式 YAML 配置文件，承载所有算法超参与运维参数。
+## Chunk 策略改进
+- min_size: 80→160, max_size: 500。短段累积合并到 min_size 才输出，长段在句子边界（。！？）切断。
+- 硬边界（分隔线、代码块）强制刷新缓冲区。
+- 效果：10KB 日记从 93 chunk → 43 chunk（-54%），平均 245 chars。
 
-### 乾 — 算法超参
-- `embedding` — 模型名 + 向量维度（含建议模型列表与说明）
-- `decay` — 忘忧衰减：τ（拉面努金半衰期）、初始强度、下限
-- `retrieval` — 奈何桥候选上限 / 轮回递送条数 / 新鲜度权重
-- `sansheng_stone` — 三生石时间锚点收缩比
-- `dedup` — 向量相似度裁决阈值
-- `chunk` — 段落分段最大字符数
+## 批量嵌入 + GPU 释放
+- `OllamaEmbeddingClient.embed_batch()` — 一次 API 调用嵌入多条文本。
+- `inject_memory.py` 默认 15/batch，实测 145 文件 2807 chunk 全量重建 **99.8s**（逐条 ~8 分钟）。
+- 注入完成后 `ollama stop` 自动释放 GPU。
+- 结构化 log（`inject.log`），50 chunk 进度打点 + 时间戳。
 
-每个参数均附易懂注释与合理建议区间。
+## 增量更新 — content hash 比对
+- `inject_memory.py` 比较 SHA256 content hash：同 hash 跳过，不同 hash → 软删旧版 + 插入新版。
+- 145 文件无变化时 **1.9s** 全跳过。
 
-### 坤 — 运维参数
-- `server` — Ollama 地址、MCP 端口、重排序模型名
-- `storage` — 数据库路径、日志路径
-- `injection` — 记忆文件扫描根目录
-- `rebuild` — 扫描文件数/大小预警与硬上限
+## Dedup LLM 裁决链路
+- `chunks_meta.pending_review` + 自动迁移。
+- 注入后批量向量相似度扫描 → 待裁决标记。
+- MCP 工具：`get_pending_reviews()` + `resolve_dedup_review()`。
+- `memory_stats()` 含 `pending_reviews` 计数。
 
-### 增量更新 — content hash 比对
-- `inject_memory.py` 现在比较 SHA256 content hash：同 hash 跳过，不同 hash → 软删旧版本 + 插入新版本。
-- 统计输出新增 `updated` 计数。
+## 重排模型预留
+- `EmbeddingReranker`（余弦相似度），默认关闭。S1+S2 已足够。
+- `rerank_model` 字段预留 cross-encoder 接入。
 
-### 批量嵌入
-- `inject_memory.py` 现在使用 `embed_batch()` 批量嵌入，默认每批 15 chunk。
-- bowl.yaml 新增 `injection.batch_size` 参数（建议 5-20）。
-- 实测：45 chunk 从 ~5.8s（逐条）降至 ~1s（批量），~5.7x 提升。
+## 性能基准
+- `BENCHMARK.md` 记录完整性能数据（145 文件, 2807 chunks, 99.8s）。
+- README 运维笔记：DB 清空命令 + 性能基准表。
 
-### 重排模型预留
-- `EmbeddingReranker` 已实现（余弦相似度），默认关闭—S1+S2 已足够日常检索。
-- 预留 `bowl.yaml` 中 `rerank_model` 字段，需要时可接入 cross-encoder。
-- `inject_memory.py` 现在比较 SHA256 content hash：同 hash 跳过，不同 hash → 软删旧版本 + 插入新版本。
-- 统计输出新增 `updated` 计数。
+## 测试
+- 122/122 tests。新增：`embed_batch`(11), `chunk_text`(8), `EmbeddingReranker`(7)。
 
-### Dedup LLM 裁决链路
-- `chunks_meta` 新增 `pending_review` 字段（自动迁移现有数据库）。
-- `inject_memory.py` 注入后自动扫描向量相似度，超过阈值（0.95）的候选标记为待裁决。
-- MCP 工具 `get_pending_reviews()` — LLM 拉取待裁决候选列表。
-- MCP 工具 `resolve_dedup_review(memory_id, verdict)` — LLM 做出 duplicate/false_positive 判定。
-- `memory_stats()` 输出新增 `pending_reviews` 计数。
+## 已知限制
+- Dedup 扫描大批量嵌入超时 → v0.10.79 分批。
+- `_blend()` 与 Samsara_Rank 公式重复。
+- 智能日记时间注入 → v0.10.79。
 
 ---
 
