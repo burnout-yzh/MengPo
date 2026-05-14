@@ -283,7 +283,7 @@ def main() -> None:
         try:
             content = fp.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
-            print(f"  [skip] {source_file}: read error ({exc})")
+            _log(f"  [skip] {source_file}: read error ({exc})")
             skipped += 1
             continue
 
@@ -348,7 +348,7 @@ def main() -> None:
             try:
                 vecs = ec.embed_batch([nr["content"] for nr in new_rows])
             except EmbeddingError as exc:
-                print(f"  Dedup scan aborted: embedding error ({exc})")
+                _log(f"  Dedup scan aborted: embedding error ({exc})")
                 vecs = []
 
             flagged = 0
