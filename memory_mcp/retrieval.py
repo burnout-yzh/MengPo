@@ -8,12 +8,14 @@ re-ranks inside the semantic candidate set, using a weighted geometric mean.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
 from math import exp, log
 import json
 import sqlite3
 from .embeddings import OllamaEmbeddingClient
 from .database import Database
+from .freshness import WangYou_Decay
 
 
 class ProtocolErrorCode(str, Enum):
@@ -94,54 +96,92 @@ def S1_vector_search(
     query: str,
     candidate_limit: int = SEMANTIC_CANDIDATE_LIMIT,
     embed_client: OllamaEmbeddingClient | None = None,
+    now: datetime | None = None,
 ) -> list[RetrievalCandidate]:
     """S1 vector search via sqlite-vec (Naihe_Bridge physical layer).
 
-    Returns real vector candidates. Forces top-45 (or all if < 45 exist).
-    Logs highest and lowest similarity scores.
+    Single-transaction pipeline:
+    1. vec search → rowid + distance pairs
+    2. Batch JOIN chunks_meta + memories → content + freshness anchors
+    3. WangYou_Decay populates freshness_score for downstream S2 blending
     """
     if embed_client is None:
         embed_client = OllamaEmbeddingClient(
             base_url="http://127.0.0.1:11434",
             model="qwen3-embedding-0.6b",
         )
+    if now is None:
+        now = datetime.now(UTC)
 
     query_vec = embed_client.embed(query)
     query_json = json.dumps(query_vec, separators=(",", ":"))
 
-    try:
-        with db.transaction() as conn:
+    # ── Step 1: vec search (single transaction) ──
+    with db.transaction() as conn:
+        try:
             rows = conn.execute(
                 "SELECT rowid, distance FROM chunks_vec WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
                 (query_json, candidate_limit),
             ).fetchall()
-    except sqlite3.OperationalError as exc:
-        raise RuntimeError(f"sqlite-vec search failed: {exc}") from exc
+        except sqlite3.OperationalError as exc:
+            raise RuntimeError(f"sqlite-vec search failed: {exc}") from exc
 
-    results = []
-    for rowid_val, distance in rows:
-        similarity = 1.0 - distance
-        with db.transaction() as conn:
-            content_row = conn.execute(
-                "SELECT m.id, m.content, m.source_file FROM memories m "
-                "JOIN chunks_meta cm ON cm.memory_id = m.id "
-                "WHERE cm.rowid = ? LIMIT 1",
-                (rowid_val,),
-            ).fetchone()
-        if content_row is None:
+        if not rows:
+            return []
+
+        # ── Step 2: batch JOIN to collect content + freshness anchors ──
+        rowid_set: list[int] = []
+        distance_by_rowid: dict[int, float] = {}
+        for rowid_val, distance in rows:
+            rowid_set.append(rowid_val)
+            distance_by_rowid[rowid_val] = distance
+
+        placeholders = ",".join(["?"] * len(rowid_set))
+        content_rows = conn.execute(
+            f"""
+            SELECT cm.rowid, m.id, m.content, m.source_file,
+                   m.last_effective_recall_at, m.created_at
+              FROM chunks_meta cm
+              JOIN memories m ON m.id = cm.memory_id
+             WHERE cm.rowid IN ({placeholders})
+            """,
+            rowid_set,
+        ).fetchall()
+
+    # ── Step 3: build candidates with real freshness ──
+    # Sort to match original vec distance order (closest first).
+    content_by_rowid = {row["rowid"]: row for row in content_rows}
+    results: list[RetrievalCandidate] = []
+    for rowid_val in rowid_set:
+        cr = content_by_rowid.get(rowid_val)
+        if cr is None:
             continue
+        distance = distance_by_rowid[rowid_val]
+        similarity = max(0.0, min(1.0, 1.0 - distance))
+
+        # Compute WangYou_Decay freshness from last effective recall anchor.
+        # Fall back to created_at when last_effective_recall_at is NULL (virgin memory).
+        anchor_text = cr["last_effective_recall_at"] or cr["created_at"]
+        try:
+            anchor_dt = datetime.fromisoformat(anchor_text.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            anchor_dt = now
+        freshness = WangYou_Decay(now=now, last_effective_recall_at=anchor_dt)
+
         results.append(RetrievalCandidate(
-            memory_id=content_row["id"],
-            content=content_row["content"],
-            semantic_score=max(0.0, min(1.0, similarity)),
-            freshness_score=0.0,
-            source_file=content_row["source_file"],
+            memory_id=cr["id"],
+            content=cr["content"],
+            semantic_score=similarity,
+            freshness_score=freshness,
+            source_file=cr["source_file"],
         ))
 
     if results:
         scores = [r.semantic_score for r in results]
+        fresh_vals = [r.freshness_score for r in results]
         print(f"[S1_Naihe_Bridge] vec search: {len(results)} candidates, "
-              f"sim range: {min(scores):.4f} - {max(scores):.4f}")
+              f"sim range: {min(scores):.4f} - {max(scores):.4f}, "
+              f"freshness range: {min(fresh_vals):.4f} - {max(fresh_vals):.4f}")
 
     return results
 

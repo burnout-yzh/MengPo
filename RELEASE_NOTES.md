@@ -1,3 +1,49 @@
+# MengPo v0.10.76
+
+## Code Audit & Refactoring
+
+Full codebase audit (37 files, 18 `.py` source files), 11 findings addressed. 85/85 tests pass.
+
+### server.py Rewrite
+- **Before**: `server.py` operated on its own `memory_metadata` + `vec_memories` tables, opening raw `sqlite3` connections, containing a complete self-contained retrieval/ranking/write-back pipeline (~300 lines of scaffolding).
+- **After**: Thin facade delegating entirely to `memory_mcp` modules:
+  - `get_relevant_memories` → `S1_vector_search` + `Samsara_Rank`
+  - `Sansheng_Stone` → `db.Sansheng_Stone()`
+  - `memory_stats` → `db.row_counts()`
+- Removed all scaffolding: `_s1_search()`, `_rank()`, `_ensure_s3_columns()`.
+
+### S1-S2-Expand Cache Optimisation
+- **Samsara_Rank** now blend-sorts all 45 S1 candidates (weighted geometric mean) and the full ranked list is cached in-memory.
+- `get_relevant_memories` delivers the top 5 from the cached ranked list.
+- `expand_retrieval` slices `[cursor:cursor+5]` directly from the cache — **no re-ranking**, delivering results in strict blend-ranked order.
+- Supports up to 8 expand calls (45÷5=9 batches); returns exhausted when depleted.
+
+### S1_vector_search Fixes
+- **Transaction optimisation**: 46 transactions (1 vec search + 45 per-row lookups) → 1 transaction (1 vec search + 1 batch IN-JOIN).
+- **Freshness wired in**: `WangYou_Decay` now populates `freshness_score` between S1 and S2 (was always 0.0). Falls back to `created_at` when `last_effective_recall_at` is NULL.
+
+### Embedding Model Unification
+- All `bge-m3` references removed; unified to `qwen3-embedding-0.6b` (1024 dim).
+- Affected files: `embeddings.py`, `schema.py`.
+
+### Docs & Attribution
+- `__init__.py` docstring updated to reflect the full MCP toolkit surface.
+- `pyproject.toml` version 0.10.74 → 0.10.76, authors unified to `pawpaw`.
+- `LICENSE` and `pyproject.toml` attribution aligned.
+
+### New `expand_retrieval` MCP Tool
+- `expand_retrieval(session_id)` — LLM can request additional memories on demand, up to 5 per call.
+- Session-level cache: `get_relevant_memories` must be called with `session_id` first.
+- Returns `remaining` count so the LLM can gauge how many more are available.
+
+### New S3 Write-Back Tests
+- 6 test cases covering `Sansheng_Stone`: happy path, non-existent IDs silently ignored, empty input noop, `shrink_factor` validation, time-anchor formula verification, soft-deleted memory skip.
+
+## Known Limitations (Deferred)
+- **Second-round S1 exclusion**: When expand exhausts all 45 cached candidates, a second S1 round excluding already-delivered IDs is theoretically possible. In practice, an LLM failing to find useful hits after flipping through 45 results is extremely unlikely. Deferred — file an issue if needed.
+
+---
+
 # MengPo v0.10.75
 
 ## Known Issues
@@ -37,10 +83,10 @@ The following issues are acknowledged in this release and will be addressed in s
 - RELEASE_NOTES contains specific dates that require manual updates on each release and are prone to being missed.
 - **Commitment**: Replace date fields with `git tag`-based versioning.
 
-### 8. AI Slop
-- The codebase currently exists in a "vibe slop" state — barely struggling to reach minimum viable validation.
-- Planned: manual code audit to fix slop artifacts, logic mismatches from original intent, and general code quality.
-- The repo is published now to stake a claim; completion follows perfection. Ships now, refines later.
+### 8. AI Slop — ✅ resolved in v0.10.76
+- ~~The codebase existed in a "vibe slop" state.~~
+- ~~Full code audit (37 files) completed, all 11 findings addressed.~~
+- ~~server.py facade rewrite, S1_vector_search transaction optimisation, freshness pipeline wired, bge-m3 cleanup.~~
 
 ## Notes
 

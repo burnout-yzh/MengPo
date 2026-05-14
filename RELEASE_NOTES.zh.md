@@ -1,3 +1,49 @@
+# MengPo v0.10.76
+
+## 代码审计与重构
+
+全量代码审计（37 文件，18 个 `.py` 源文件），修复 11 项 slop/不一致/遗漏。85/85 单元测试通过。
+
+### server.py 全面重写
+- **之前**：`server.py` 使用独立表 `memory_metadata` + `vec_memories`，直接操作 `sqlite3`，自包含一套完整的检索/排序/写回逻辑（~300 行脚手架代码）。
+- **之后**：重写为薄 facade，全部委托给底层 `memory_mcp` 模块：
+  - `get_relevant_memories` → `S1_vector_search` + `Samsara_Rank`
+  - `Sansheng_Stone` → `db.Sansheng_Stone()`
+  - `memory_stats` → `db.row_counts()`
+- 删除了 `_s1_search()`、`_rank()`、`_ensure_s3_columns()` 等全部脚手架代码。
+
+### S1-S2-Expand 缓存优化
+- **Samsara_Rank** 现在对全部 45 条 S1 候选进行 blend 排序（加权几何平均），结果完整缓存在 runtime 内存中。
+- `get_relevant_memories` 从全量排序结果递送 top 5。
+- `expand_retrieval` 直接从排序缓存切片 `[cursor:cursor+5]`，**不再重新 Samsara_Rank**——避免重复 blend 计算，且 expand 结果严格按 blend 排名顺序递出。
+- 支持最多 8 次 expand（45÷5=9 批次），耗尽后返回 exhausted。
+
+### S1_vector_search 修复
+- **事务优化**：从 46 个事务（1 次 vec 搜索 + 45 次 per-row 查询）→ 1 个事务（一次 vec 搜索 + 一次批量 IN JOIN）。
+- **忘忧衰减接入**：`WangYou_Decay` 现在在 S1→S2 之间填充 `freshness_score`（之前永远是 0.0）。fallback: 当 `last_effective_recall_at` 为 NULL 时使用 `created_at`。
+
+### 嵌入模型统一
+- 全仓库删除 `bge-m3` 引用，统一为 `qwen3-embedding-0.6b`（1024 维）。
+- 影响文件：`embeddings.py`、`schema.py`。
+
+### 文档与署名
+- `__init__.py` docstring 更新为完整 MCP 工具包描述。
+- `pyproject.toml` 版本 0.10.74 → 0.10.76，authors 统一为 `pawpaw`。
+- `LICENSE` 与 `pyproject.toml` 署名对齐。
+
+### 新增 expand_retrieval MCP 工具
+- `expand_retrieval(session_id)` — LLM 按需获取更多记忆，每轮返回最多 5 条。
+- Session 级缓存：`get_relevant_memories` 需传入 `session_id` 激活缓存。
+- 返回 `remaining` 字段让 LLM 感知余量。
+
+### 新增 S3 写回测试
+- 6 个测试用例覆盖 `Sansheng_Stone`：主流程、不存在 ID 静默忽略、空输入 noop、shrink_factor 校验、锚点公式验证、软删除跳过。
+
+## 已知限制（暂不实现）
+- **第二轮 S1 排除机制**：expand 耗尽全部 45 条后理论上可触发第二轮 S1 排除已递送 IDs。LLM 翻满 45 条仍未命中的概率极低，暂不实现。如有需要可提 issue。
+
+---
+
 # MengPo v0.10.75
 
 ## 已知问题
@@ -37,9 +83,9 @@
 - RELEASE_NOTES 含具体日期，每次发布需手动更新，容易遗漏
 - **承诺修复**：改用 `git tag` 替代版本号中的日期字段
 
-### 8.AI slop
-- 当前仅勉强挣扎着完成最小可行性验证的 vibe slop状态，计划未来进行代码的人工审查，修复各种slop问题，修复各与原意图不一致的代码逻辑。
-- 当前仅勉强挣扎着完成最小可行性验证，项目repo放出来先占坑，基于完成再完美的思路。
+### 8. AI slop — ✅ 已于 v0.10.76 完成全量审计修复
+- ~~全量代码审计（37 文件）已完成，11 项发现全部修复。~~
+- ~~server.py 重写为 facade、S1_vector_search 事务优化、新鲜度链路补全、bge-m3 清理等。~~
 
 ## 说明
 

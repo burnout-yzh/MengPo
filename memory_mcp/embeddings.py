@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 EMBEDDING_TIMEOUT_SECONDS = 10.0
 EMBEDDING_RETRY_COUNT = 0
-DEFAULT_EMBEDDING_MODEL = "bge-m3"
+DEFAULT_EMBEDDING_MODEL = "qwen3-embedding-0.6b"
 
 
 class EmbeddingError(RuntimeError):

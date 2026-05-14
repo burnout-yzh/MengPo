@@ -18,7 +18,7 @@ does not change.
 
 from __future__ import annotations
 
-# A vector dimension of 1024 matches the BGE-M3 decision in PLAN.md.
+# Vector dimension: 1024 (qwen3-embedding-0.6b native dimension).
 DEFAULT_EMBEDDING_DIM = 1024
 
 SCHEMA_STATEMENTS: tuple[str, ...] = (

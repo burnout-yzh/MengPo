@@ -1,9 +1,7 @@
-"""Memory MCP package root.
+"""MengPo (孟婆) — Memory Evolution & Next-Gen Preference Orchestrator.
 
-The package currently exposes a foundation surface: atomic storage, database
-helpers, and dataclasses used by the executable tests. Retrieval, embedding
-I/O, MCP tool registration, and dedup orchestration remain under active
-iteration.
+Full MCP server toolkit for vector memory storage, retrieval (S1-S3),
+deduplication, freshness decay, and atomic transactions over sqlite-vec.
 """
 
 from .atomic_store import (
