@@ -29,7 +29,7 @@ $$Score = (1 - \text{Distance}) \cdot e^{-\frac{\Delta t}{\tau}}$$
 
 ## Project Meta
 
-- 中文版本: `README.zh.md`
+- English README: `README.md`
 - License: MIT
 
 ## Current Status
@@ -52,7 +52,7 @@ Implemented and tested:
 Validated in integration runs:
 
 - Real `sqlite-vec` vec0 wiring and SQL retrieval are working.
-- End-to-end retrieval path (write -> ingest -> retrieve -> return) is working.
+- End-to-end retrieval path (write → ingest → retrieve → return) is working.
 - Chunker, dedup adjudication runtime, and LLM callback branch handling are working.
 
 Still to expand:
@@ -63,16 +63,6 @@ Current MCP server note:
 
 - `memory_mcp/server.py` provides a working local MCP entrypoint.
 - It has been validated in real qwenpaw integration runs.
-
-## Project Status
-
-This project is provided as-is. I am not actively maintaining it, though improvements may happen over time. Issues or pull requests may not be reviewed.
-
-Forks, rewrites, and continued development are welcome. If you find this project useful, a star would be appreciated.
-
-## License
-
-This project is licensed under the MIT License. See `LICENSE`.
 
 ## Development
 
@@ -124,6 +114,16 @@ Related adjustable retrieval gate:
 ## Roadmap
 
 The active roadmap lives in this repository's issue and commit history.
+
+## Project Status
+
+This project is provided as-is. I am not actively maintaining it, though improvements may happen over time. Issues or pull requests may not be reviewed.
+
+Forks, rewrites, and continued development are welcome. If you find this project useful, a star would be appreciated.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.
 
 ---
 
