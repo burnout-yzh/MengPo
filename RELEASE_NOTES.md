@@ -1,3 +1,9 @@
+# MengPo v0.10.79
+
+> In development — smart diary time injection, dedup scan pagination.
+
+---
+
 # MengPo v0.10.78
 
 ## bowl.yaml — the MengPo Bowl
