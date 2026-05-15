@@ -1,6 +1,6 @@
 # 首次使用 / First Time Use
 
-> 本文件面向**终端用户**：如果你不是在维护 MengPo，这就是你唯一需要读的文件。
+环境和依赖较为复杂，建议咨询 Agent 嗅探本地环境，阅读此文件，并阅读 requirements.txt 或者 pyproject.toml ，判断需要的依赖项。
 
 ---
 
@@ -61,15 +61,16 @@ ollama serve          # 启动 Ollama 服务（后台保持运行）
 ollama pull qwen3-embedding:0.6b    # 约 600MB，首次下载
 ```
 
-模型下载完成后，孟婆会自动检测并使用本地嵌入服务。
+模型下载完成后，孟婆会自动检测并使用本地嵌入服务（默认使用11434端口）。
 
 ---
 
 ## 首次运行说明
 
-> **"本产品开箱即用，首次运行可能需要自展开，首次嵌入可能需要 2-3 分钟。"**
+> **"本产品希望尽力做到开箱即用，已在减少依赖方面做出一定努力，但会导致首次运行需要自展开步骤，首次嵌入可能需要 2-3 分钟。"**
 
-这是什么意思？
+首次使用需要在 bowl.yaml 中配置 memory_dir，指向记忆源 .md文件群的实际路径。
+我们引入了以下功能，但不保证在任何环境中都可以稳定实现。
 
 - **自展开**：首次 `python -m memory_mcp.server` 会检测 `bowl.yaml` 配置，自动创建数据库文件（`mengpo_memory.db`）
 - **首次嵌入**：如果你配置了 `memory_dir`（记忆文档目录），首次检索时会自动扫描并嵌入所有 `.md` 文件。文件越多，耗时越长
@@ -79,7 +80,7 @@ ollama pull qwen3-embedding:0.6b    # 约 600MB，首次下载
 
 ## MCP 配置指引
 
-孟婆是一个 **MCP (Model Context Protocol) Server**。配置到你的 AI 客户端（如 QwenPaw、Claude Desktop、Cursor 等）后即可使用。
+孟婆是一个 **MCP (Model Context Protocol) Server**。我们包含了一些单元测试，可以方便Bug的定位，但是也无法保证AI写的单元测试能覆盖到所有条件和情况，对于这一点，我们表示十分的，诚恳的抱歉。
 
 ### QwenPaw Desktop 配置
 

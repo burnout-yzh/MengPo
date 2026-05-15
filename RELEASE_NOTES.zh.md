@@ -288,26 +288,11 @@
 ## 说明
 
 - 这是一个公开发布快照，按现状提供。
-- 本版本按现状发布；后续如有扩展，以社区 fork 或衍生实现为主。
+- 本版本按现状发布；后续如有扩展，以社区 fork 或衍生实现为主，虽然不太可能有。
 
 ## 安装
 
-```bash
-pip install mengpo
-```
-
-如果需要 MCP server 运行时依赖：
-
-```bash
-pip install mengpo[server]
-```
-
-## 验证
-
-```bash
-python3 -m unittest discover -v
-python3 scripts/manual_qa.py
-```
+见 首次使用_first_time_use.md
 
 ---
 

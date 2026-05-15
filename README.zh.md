@@ -29,7 +29,8 @@ python -m memory_mcp.server
 
 **轮回 (Samsara Rank / S2)**：应用拉面努金衰减进行时空重排，决定哪些记忆值得在当前上下文"转世"。
 
-$$Score = (1 - \text{Distance}) \cdot e^{-\frac{\Delta t}{\tau}}$$
+$$\text{S1: 语义门控}\quad R = \text{cosine\_similarity}(q, m)$$
+$$\text{S2: 轮回排序}\quad Score = R^{\,(1-w)} \cdot \left(e^{-\Delta t / \tau}\right)^{w}, \quad w = 0.368$$
 
 **三生石 (Sansheng Stone / S3)**：对高频或重要锚点执行写回提权，刻下时间深度的"缘分"。
 
@@ -53,7 +54,7 @@ $$Score = (1 - \text{Distance}) \cdot e^{-\frac{\Delta t}{\tau}}$$
 - 检索排序策略：语义 top45、按新鲜值重排、固定返回 5 条
 - S1/S2/S3 回忆闭环与 `expand` 排重
 - S3 写回强化
-- 夺舍注入 (DuoShe Injection)：可配置新会话首轮强制同步"最新人格"，实现跨会话的认知连续性。
+- 夺舍注入 (DuoShe Injection)：可配置新会话首轮强制同步"最新人格"（默认关闭），从 `AGENTS.md`、`MEMORY.md`、`PROFILE.md`、`SOUL.md` 中注入提示词，实现跨会话的性格连续性。在 `memory_mcp/retrieval_service.py` 中通过 `enable_duoshe` 和 `duoshe_root` 配置。
 - 忘川审计：通过 check_consistency.py 辅助处理遗忘边缘的去重与裁决。
 
 ## 已通过集成验证
@@ -227,5 +228,3 @@ print('DB cleared')
 MIT，详见 `LICENSE`。
 
 ---
-
-*献给这个鲜活世界的三十周年礼物*

@@ -29,7 +29,8 @@ MengPo transcends conventional CRUD operations. Every memory fragment must under
 
 **Samsara Rank (Temporal Reshaping / S2)**: Applies Ramanujan Decay to perform spatio-temporal re-ranking, determining which memories deserve "reincarnation" within the current context.
 
-$$Score = (1 - \text{Distance}) \cdot e^{-\frac{\Delta t}{\tau}}$$
+$$\text{S1: 语义门控}\quad R = \text{cosine\_similarity}(q, m)$$
+$$\text{S2: 轮回排序}\quad Score = R^{\,(1-w)} \cdot \left(e^{-\Delta t / \tau}\right)^{w}, \quad w = 0.368$$
 
 **Sansheng Stone (Anchor Reinforcement / S3)**: Performs write-back privilege escalation for high-frequency or pivotal anchors, etching the "Karmic Weight" of temporal depth.
 
@@ -59,7 +60,7 @@ Implemented and tested:
 - S3 writeback reinforcement with configurable `shrink_factor` (default `0.368`, i.e. `1/e`).
 - Consistency checker for `memories/chunks_meta/chunks_vec` linkage plus utility script `scripts/check_consistency.py`.
 - Dedup adjudication policy, pre-store preflight routing, merge-append helper, and dedup audit events.
-- Configurable first-round duoshe injection for new sessions (disabled by default), configured in `memory_mcp/retrieval_service.py` via `enable_duoshe` and `duoshe_root`.
+- Configurable first-round duoshe injection for new sessions (disabled by default): force-syncs the latest persona on a session's first retrieval by injecting prompts from `AGENTS.md`, `MEMORY.md`, `PROFILE.md`, and `SOUL.md`. Configure in `memory_mcp/retrieval_service.py` via `enable_duoshe` and `duoshe_root`.
 
 Validated in integration runs:
 
@@ -226,9 +227,6 @@ print('DB cleared')
 
 Config: `chunk: size_min=160, size_max=500`, `batch_size=15`, `qwen3-embedding-0.6b`. See `BENCHMARK.md` for details.
 
-## Rebuild Scan Limits (T15 Precheck)
-
-The active roadmap lives in this repository's issue and commit history.
 
 ## Version History
 
@@ -249,5 +247,3 @@ Forks, rewrites, and continued development are welcome. If you find this project
 This project is licensed under the MIT License. See `LICENSE`.
 
 ---
-
-*A thirtieth-anniversary gift to this vivid world*
