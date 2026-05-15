@@ -3,6 +3,18 @@
 **燃尽冗余，方得共鸣。**
 *Burn the redundant, find the resonant.*
 
+## 快速开始
+
+```bash
+git clone https://github.com/burnout-yzh/MengPo.git && cd MengPo
+setup.bat                  # 自动安装依赖（阿里云/清华镜像）
+python -m memory_mcp.server
+```
+
+> 详见 `首次使用_first_time_use.md`，含 Ollama 安装与 MCP 接入指引。
+
+---
+
 ## 概览
 
 **Memory Evolution & Next-Gen Preference Orchestrator.**
@@ -197,6 +209,14 @@ print('DB cleared')
 ## 路线图
 
 当前路线图以仓库的 issue 与提交历史为准。
+
+## 版本历史
+
+- **v0.12.0** — 快速上手体验：`setup.bat` + `requirements.txt` + `首次使用_first_time_use.md`（首次使用指引），同时兼容 pip 和 uv
+- **v0.11.0** — `bowl.yaml` 配置中心化：所有参数从硬编码/环境变量迁移到 YAML 驱动
+- **v0.10.79** — 去重复用 `chunks_vec` 中已计算的向量，无需重新 embedding
+- **v0.10.78** — 完整认知代谢管线：奈何桥 / 轮回排序 / 三生石 / 忘川
+- 更早版本 — 核心基建：原子存储、嵌入、去重、分块
 
 ## 项目状态
 本项目按现状提供。我目前不会持续维护，也许会持续改进，issue 或 pull request 可能不会得到回复。

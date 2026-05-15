@@ -3,6 +3,18 @@
 **燃尽冗余，方得共鸣。**
 *Burn the redundant, find the resonant.*
 
+## Quick Start
+
+```bash
+git clone https://github.com/burnout-yzh/MengPo.git && cd MengPo
+setup.bat                  # auto-install deps (aliyun/tsinghua mirrors)
+python -m memory_mcp.server
+```
+
+> See `首次使用_first_time_use.md` for Ollama setup and MCP integration.
+
+---
+
 ## Overview
 
 **Memory Evolution & Next-Gen Preference Orchestrator.**
@@ -217,6 +229,14 @@ Config: `chunk: size_min=160, size_max=500`, `batch_size=15`, `qwen3-embedding-0
 ## Rebuild Scan Limits (T15 Precheck)
 
 The active roadmap lives in this repository's issue and commit history.
+
+## Version History
+
+- **v0.12.0** — Quick-start experience: `setup.bat` + `requirements.txt` + `首次使用_first_time_use.md` (first-time user guide), dual pip/uv support
+- **v0.11.0** — `bowl.yaml` configuration centralization: all parameters migrated from hardcoded defaults/env-vars to YAML-driven
+- **v0.10.79** — Dedup reuses pre-computed vectors from `chunks_vec`, no re-embedding
+- **v0.10.78** — Full cognitive metabolism pipeline: Naihe_Bridge / Samsara_Rank / Sansheng_Stone / Wang_Chuan
+- Earlier releases — Core infrastructure: atomic store, embed, dedup, chunker
 
 ## Project Status
 

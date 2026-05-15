@@ -1,3 +1,29 @@
+# MengPo v0.12.0
+
+## 快速上手体验：`setup.bat` + `requirements.txt` + 首次使用指引
+
+孟婆现在 **clone 即跑，零摩擦上手**。不再需要猜测安装哪些包。
+
+### 新增文件
+- **`setup.bat`** — 一键环境引导。自动检测 Python 3.10+，按阿里云 → 清华 → PyPI 顺序探测可用镜像（国内友好），安装 `requirements.txt` 依赖，验证孟婆导入。同时兼容 `uv sync`。
+- **`requirements.txt`** — 最小依赖声明：`mcp>=1.0`、`sqlite-vec==0.1.9`、`pyyaml>=6.0`。
+- **`首次使用_first_time_use.md`** — 完整的首次使用指引。涵盖：前置要求、三步启动、可选 Ollama 安装（PowerShell 一行命令）、"首次自展开"原理说明、QwenPaw Desktop 和 Claude Desktop 的 MCP 配置示例、常见问题排查。
+
+### README 双语更新
+- `README.md` 和 `README.zh.md` 均以"快速开始"章节开篇。
+- 新增**版本历史**表，覆盖 v0.10.78 → v0.12.0。
+
+### 设计考量
+- **方案 A（requirements.txt + pip）** 与 **方案 B（uv sync）** 同时支持——用户自选顺手工具。
+- `setup.bat` 幂等：更新后重新运行安全无副作用。
+- 离线友好：pip/uv 缓存依赖后无需网络。
+
+### 无代码改动
+- `pyproject.toml`：版本升至 `0.12.0`。
+- `memory_mcp/` — 未变动。
+
+---
+
 # MengPo v0.11.0
 
 ## bowl.yaml — 现为唯一配置源

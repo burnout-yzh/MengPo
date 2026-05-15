@@ -1,3 +1,36 @@
+# MengPo v0.12.0
+
+## Quick-Start Experience: `setup.bat` + `requirements.txt` + First-Time User Guide
+
+MengPo is now **zero-friction to clone and run**. No more hunting for which pip packages to install.
+
+### New files
+- **`setup.bat`** — One-click environment bootstrap. Auto-detects Python 3.10+,
+  probes Aliyun / Tsinghua / PyPI mirrors (China-friendly), installs
+  `requirements.txt`, and verifies MengPo imports.  Also works with `uv sync`.
+- **`requirements.txt`** — Minimal dependency declaration: `mcp>=1.0`,
+  `sqlite-vec==0.1.9`, `pyyaml>=6.0`.
+- **`首次使用_first_time_use.md`** — Complete first-time user guide (Chinese).
+  Covers: prerequisites, three-step start, optional Ollama installation
+  (PowerShell one-liners), "first-run self-expansion" explanation, MCP
+  configuration for QwenPaw Desktop and Claude Desktop, and FAQ.
+
+### README bilingual refresh
+- Both `README.md` and `README.zh.md` now open with a Quick Start section.
+- Added **Version History** table covering v0.10.78 → v0.12.0.
+
+### Design rationale
+- **Strategy A (requirements.txt + pip)** and **Strategy B (uv sync)** are
+  both supported — user picks their preferred tool.
+- `setup.bat` is idempotent: safe to re-run after updates.
+- Offline-friendly: once dependencies are cached by pip/uv, no network needed.
+
+### No code changes
+- `pyproject.toml`: version bumped to `0.12.0`.
+- `memory_mcp/` — unchanged.
+
+---
+
 # MengPo v0.11.0
 
 ## bowl.yaml — Now the Single Source of Truth
