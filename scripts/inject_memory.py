@@ -19,6 +19,7 @@ import hashlib
 import json
 import struct
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -203,6 +204,116 @@ def _vec_blob_to_json(blob: bytes) -> str | None:
     floats = struct.unpack_from(f"<{dim}f", blob, 4)
     return json.dumps(list(floats), separators=(",", ":"))
 
+def _extract_diary_date(filename: str) -> str | None:
+    """智能提取日记日期（ISO格式，分钟精度）。
+
+    扫描文件名，按优先级尝试多种日期格式。识别到日期后，
+    继续查找可选时间（HHMM），返回 "YYYY-MM-DDTHH:MM:00.000Z"。
+    无日期返回 None。
+
+    兼容格式：
+      2026-05-14.md              → 2026-05-14T00:00
+      2026-05-14-description.md  → 2026-05-14T00:00
+      2026-03-19-0820.md         → 2026-03-19T08:20
+      2026_05_14_notes.md        → 2026-05-14T00:00
+      2026_05_14_1430.md         → 2026-05-14T14:30
+      05-14-2026.md              → 2026-05-14T00:00
+      05142026.md                → 2026-05-14T00:00
+      20260514.md                → 2026-05-14T00:00
+      20260514_1430.md           → 2026-05-14T14:30
+    """
+    # 去掉路径和扩展名，只留纯文件名
+    stem = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    stem = stem.rsplit(".", 1)[0] if "." in stem else stem
+
+    # ── 模式定义：(regex, groups_extractor) ──
+    # 每个 extractor 返回 (year, month, day, match_end_pos) 或 None
+    def _try_ymd(s: str) -> tuple[int, int, int, int] | None:
+        """YYYY[-_]MM[-_]DD — 最常用格式"""
+        m = re.search(r"(\d{4})[-_](\d{1,2})[-_](\d{1,2})", s)
+        if m:
+            return (int(m[1]), int(m[2]), int(m[3]), m.end())
+        return None
+
+    def _try_mdy(s: str) -> tuple[int, int, int, int] | None:
+        """MM[-_]DD[-_]YYYY — 美式"""
+        m = re.search(r"(\d{1,2})[-_](\d{1,2})[-_](\d{4})", s)
+        if m:
+            return (int(m[3]), int(m[1]), int(m[2]), m.end())
+        return None
+
+    def _try_ymd_compact(s: str) -> tuple[int, int, int, int] | None:
+        """YYYYMMDD — 8位紧凑"""
+        m = re.search(r"(\d{4})(\d{2})(\d{2})", s)
+        if m:
+            start, end = m.start(), m.end()
+            # 确保是独立数字块（前后非数字）
+            if (start == 0 or not s[start - 1].isdigit()) and (
+                end == len(s) or not s[end].isdigit()
+            ):
+                return (int(m[1]), int(m[2]), int(m[3]), end)
+        return None
+
+    def _try_mdy_compact(s: str) -> tuple[int, int, int, int] | None:
+        """MMDDYYYY — 美式紧凑"""
+        m = re.search(r"(\d{2})(\d{2})(\d{4})", s)
+        if m:
+            start, end = m.start(), m.end()
+            if (start == 0 or not s[start - 1].isdigit()) and (
+                end == len(s) or not s[end].isdigit()
+            ):
+                # 只有当前两位 ∈ [01,12] 且后四位 ∈ [2020,2099] 才认为是日期
+                mo, dd = int(m[1]), int(m[2])
+                if 1 <= mo <= 12 and 2020 <= int(m[3]) <= 2099:
+                    return (int(m[3]), mo, dd, end)
+        return None
+
+    def _try_time(s: str, after_pos: int) -> tuple[int, int] | None:
+        """在 after_pos 之后查找 HHMM 时间。分隔符可选 [-_:T] 或无。"""
+        tail = s[after_pos:]
+        m = re.match(r"[-_T:\s]*(\d{2})[-_:]?(\d{2})", tail)
+        if m:
+            hh, mm = int(m[1]), int(m[2])
+            if 0 <= hh <= 23 and 0 <= mm <= 59:
+                return (hh, mm)
+        return None
+
+    scanners = [
+        (_try_ymd, "YYYY-MM-DD"),
+        (_try_mdy, "MM-DD-YYYY"),
+        (_try_ymd_compact, "YYYYMMDD"),
+        (_try_mdy_compact, "MMDDYYYY"),
+    ]
+
+    for scanner, _label in scanners:
+        parsed = scanner(stem)
+        if parsed is None:
+            continue
+        y, mo, d, end_pos = parsed
+
+        # 基础合法性
+        if not (2020 <= y <= 2099 and 1 <= mo <= 12 and 1 <= d <= 31):
+            continue
+
+        # datetime 最终验证（处理 2月30日等无效日期）
+        try:
+            from datetime import datetime as dt
+
+            dt(y, mo, d)
+        except ValueError:
+            continue
+
+        # 提取时间（可选）
+        time_tuple = _try_time(stem, end_pos)
+        hh, mm = (time_tuple if time_tuple else (0, 0))
+
+        # 处理 mm 可能是去掉前导零后的单数字段（如 2026-1-5）
+        return f"{y:04d}-{mo:02d}-{d:02d}T{hh:02d}:{mm:02d}:00.000Z"
+
+    return None
+
+
+
 
 # ── File scanner ───────────────────────────────────────────────────────────
 
@@ -249,6 +360,7 @@ def main() -> None:
         chunk_content: str
         chunk_hash: str
         chunk_index: int
+        created_at: str | None = None
 
     batch: list[_Queued] = []
 
@@ -279,6 +391,7 @@ def main() -> None:
                         )
                     ],
                     source_file=q.source_file,
+                    created_at=q.created_at,
                 )
                 total += 1
             except Exception as exc:
@@ -294,6 +407,17 @@ def main() -> None:
             source_file = str(fp.relative_to(Path(MEMORY_DIR).resolve()))
         except ValueError:
             source_file = fp.name
+
+        # ── Smart diary date extraction ──
+        diary_date = _extract_diary_date(source_file)
+        if diary_date:
+            created_at = diary_date
+        else:
+            # Fallback: file modification time
+            mtime = fp.stat().st_mtime
+            created_at = datetime.fromtimestamp(mtime).strftime(
+                "%Y-%m-%dT%H:%M:%S.000Z"
+            )
 
         try:
             content = fp.read_text(encoding="utf-8")
@@ -331,6 +455,7 @@ def main() -> None:
             batch[-1].chunk_content = chunk_content
             batch[-1].chunk_hash = chunk_hash
             batch[-1].chunk_index = ci
+            batch[-1].created_at = created_at
 
             if len(batch) >= BATCH_SIZE:
                 _flush_batch()

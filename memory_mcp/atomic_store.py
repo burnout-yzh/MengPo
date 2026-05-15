@@ -89,6 +89,7 @@ def store_memory_atomic(
     chunks: Sequence[ChunkInput],
     source_file: str | None = None,
     metadata: dict[str, object] | None = None,
+    created_at: str | None = None,
     fault: FaultPoint | None = None,
 ) -> StoreResult:
     """Atomically persist one memory + its chunks + their vectors.
@@ -105,14 +106,24 @@ def store_memory_atomic(
         cur = conn.cursor()
         try:
             _trip(fault, FaultPoint.BEFORE_MEMORY_INSERT)
-            _ = cur.execute(
-                """
-                INSERT INTO memories (namespace, content, source_file,
-                                      content_hash, metadata_json)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (namespace, content, source_file, content_hash, metadata_json),
-            )
+            if created_at:
+                _ = cur.execute(
+                    """
+                    INSERT INTO memories (namespace, content, source_file,
+                                          content_hash, metadata_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (namespace, content, source_file, content_hash, metadata_json, created_at),
+                )
+            else:
+                _ = cur.execute(
+                    """
+                    INSERT INTO memories (namespace, content, source_file,
+                                          content_hash, metadata_json)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (namespace, content, source_file, content_hash, metadata_json),
+                )
             if cur.lastrowid is None:
                 raise AtomicStoreError("memory insert did not return a rowid")
             memory_id = cur.lastrowid
