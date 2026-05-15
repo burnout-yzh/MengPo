@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import struct
 import os
 import sys
 import time
@@ -189,6 +190,20 @@ def _lookup_existing(db: Database, source_file: str, chunk_index: int) -> Existi
     return ExistingChunk(memory_id=row["id"], content_hash=row["content_hash"])
 
 
+def _vec_blob_to_json(blob: bytes) -> str | None:
+    """Convert sqlite-vec vec0 embedding BLOB to JSON float array.
+
+    vec0 BLOB format: <4 bytes: dim as uint32 LE><dim * 4 bytes: float32 LE>
+    """
+    if blob is None or len(blob) < 4:
+        return None
+    dim = struct.unpack_from("<I", blob)[0]
+    if len(blob) < 4 + dim * 4:
+        return None
+    floats = struct.unpack_from(f"<{dim}f", blob, 4)
+    return json.dumps(list(floats), separators=(",", ":"))
+
+
 # ── File scanner ───────────────────────────────────────────────────────────
 
 def scan_markdown_files(root: str | Path) -> list[Path]:
@@ -330,7 +345,8 @@ def main() -> None:
     _log(f"  DB now:  {counts['memories']} memories, {counts['chunks_meta']} meta, {counts['chunks_vec']} vec")
 
     # ── Dedup similarity scan ──────────────────────────────────────────
-    # Batch-embed all new chunks once, then search per-chunk.
+    # Reuse vectors already in chunks_vec (written during injection).
+    # No Ollama re-embedding — pure SQL JOIN + vec0 MATCH.
     if total > 0:
         _log(f"  Dedup scan: {total} candidates")
         t_dedup = time.time()
@@ -338,36 +354,34 @@ def main() -> None:
 
         with db.transaction() as conn:
             new_rows = conn.execute(
-                "SELECT rowid, content, memory_id FROM chunks_meta "
-                "WHERE pending_review = 0 ORDER BY rowid DESC LIMIT ?",
+                "SELECT m.rowid, c.embedding "
+                "FROM chunks_meta m "
+                "JOIN chunks_vec c ON m.rowid = c.rowid "
+                "WHERE m.pending_review = 0 "
+                "ORDER BY m.rowid DESC LIMIT ?",
                 (total * 2,),
             ).fetchall()
 
-        if new_rows:
-            # Batch embed — one API call, not N.
-            try:
-                vecs = ec.embed_batch([nr["content"] for nr in new_rows])
-            except EmbeddingError as exc:
-                _log(f"  Dedup scan aborted: embedding error ({exc})")
-                vecs = []
+        flagged = 0
+        with db.transaction() as conn:
+            for nr in new_rows:
+                emb_json = _vec_blob_to_json(nr["embedding"])
+                if emb_json is None:
+                    continue
 
-            flagged = 0
-            with db.transaction() as conn:
-                for nr, vec in zip(new_rows, vecs):
-                    qj = json.dumps(vec, separators=(",", ":"))
-                    neighbours = conn.execute(
-                        "SELECT rowid, distance FROM chunks_vec "
-                        "WHERE embedding MATCH ? AND rowid != ? "
-                        "ORDER BY distance LIMIT 1",
-                        (qj, nr["rowid"]),
-                    ).fetchall()
+                neighbours = conn.execute(
+                    "SELECT rowid, distance FROM chunks_vec "
+                    "WHERE embedding MATCH ? AND rowid != ? "
+                    "ORDER BY distance LIMIT 1",
+                    (emb_json, nr["rowid"]),
+                ).fetchall()
 
-                    if neighbours and (1.0 - neighbours[0]["distance"]) >= DEFAULT_DEDUP_THRESHOLD:
-                        conn.execute(
-                            "UPDATE chunks_meta SET pending_review = 1 WHERE rowid = ?",
-                            (nr["rowid"],),
-                        )
-                        flagged += 1
+                if neighbours and (1.0 - neighbours[0]["distance"]) >= DEFAULT_DEDUP_THRESHOLD:
+                    conn.execute(
+                        "UPDATE chunks_meta SET pending_review = 1 WHERE rowid = ?",
+                        (nr["rowid"],),
+                    )
+                    flagged += 1
 
         if flagged > 0:
             _log(f"  Pending review: {flagged} flagged ({time.time()-t_dedup:.0f}s)")
