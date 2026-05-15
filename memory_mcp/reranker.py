@@ -16,10 +16,13 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from .config import Config
 
 RERANK_TIMEOUT_SECONDS = 10.0
 RERANK_RETRY_COUNT = 0
-DEFAULT_RERANK_MODEL = "qwen3-reranker-0.6b:latest"
+
+# ── rerank model from bowl.yaml ──────────────────────────────────────
+DEFAULT_RERANK_MODEL = Config.load_cached().server.rerank_model
 
 
 class RerankError(RuntimeError):

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from .config import Config
+
+
+_cfg_scanner = Config.load_cached()
 
 
 @dataclass(frozen=True)
@@ -15,15 +19,26 @@ class ScanResult:
 def scan_memory_dir(
     path: str | Path,
     *,
-    pattern: str = "*.md",
+    pattern: str | None = None,
     follow_symlinks: bool = False,
 ) -> ScanResult:
     """Scan markdown files with safe default symlink handling.
 
     Default policy does not follow symlinks. If enabled, any symlink target
     must resolve inside the scan root; out-of-root links are skipped.
+
+    Parameters
+    ----------
+    path:
+        Root directory to scan.
+    pattern:
+        Glob pattern for file selection.  Defaults to
+        ``Config().injection.file_pattern`` (``"*.md"`` from bowl.yaml).
+    follow_symlinks:
+        If True, follow symlinks that resolve inside the scan root.
     """
-    root = Path(path).expanduser().resolve()
+    if pattern is None:
+        pattern = _cfg_scanner.injection.file_pattern
     if not root.exists() or not root.is_dir():
         raise ValueError(f"scan root is not a directory: {root}")
 

@@ -8,7 +8,8 @@ re-ranks inside the semantic candidate set, using a weighted geometric mean.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+UTC = timezone.utc
 from enum import Enum
 from math import exp, log
 import json
@@ -16,6 +17,15 @@ import sqlite3
 from .embeddings import OllamaEmbeddingClient
 from .database import Database
 from .freshness import WangYou_Decay
+from .config import Config
+
+
+# ── S1 / S2 parameters from bowl.yaml ─────────────────────────────────
+_cfg_retrieval = Config.load_cached().retrieval
+SEMANTIC_CANDIDATE_LIMIT = _cfg_retrieval.candidate_limit  # S1 full pool
+RESULT_LIMIT = _cfg_retrieval.result_limit                  # S2 delivery count
+FRESHNESS_WEIGHT = _cfg_retrieval.freshness_weight          # 1/e -- natural decay constant
+RANK_SCORE_EPSILON = 1e-12  # not in bowl.yaml, hard-coded stable
 
 
 class ProtocolErrorCode(str, Enum):
@@ -33,11 +43,6 @@ class RetrievalProtocolError(ValueError):
     def __init__(self, code: ProtocolErrorCode, message: str):
         super().__init__(message)
         self.code = code
-
-SEMANTIC_CANDIDATE_LIMIT = 45  # S1 full pool: blend-sort all 45, deliver in 5-chunk batches
-RESULT_LIMIT = 5
-FRESHNESS_WEIGHT = 0.368  # 1/e -- natural decay constant
-RANK_SCORE_EPSILON = 1e-12
 
 
 @dataclass(frozen=True)

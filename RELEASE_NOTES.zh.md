@@ -1,3 +1,48 @@
+# MengPo v0.11.0
+
+## bowl.yaml — 现为唯一配置源
+
+`config.py` 从 `bowl.yaml` 读取全部参数。碗中定义的每个参数现已接线到代码。优先级链：**环境变量 > bowl.yaml > 代码默认值**。
+
+### 新增模块：`memory_mcp/config.py`
+- `Config` 类，含 10 个嵌套配置组（embedding, decay, retrieval, sansheng_stone, dedup, chunk, server, storage, injection, rebuild）。
+- `Config.load()` — 加载 `bowl.yaml`，应用环境变量覆盖。
+- `Config.load_cached()` — 单例缓存，重复调用不重复加载。
+- `Config._find_bowl_yaml()` — 从 CWD 或仓库根目录自动发现 `bowl.yaml`。
+- `Config._apply_env_overrides()` — 环境变量高于 YAML 值。
+
+### 从硬编码迁移到 Config 的模块：
+
+| 模块 | 修改前 | 修改后 |
+|------|--------|--------|
+| `retrieval.py` | `SEMANTIC_CANDIDATE_LIMIT = 45`（硬编码） | `Config.load_cached().retrieval.candidate_limit` |
+| `retrieval.py` | `RESULT_LIMIT = 5`（硬编码） | `Config.load_cached().retrieval.result_limit` |
+| `retrieval.py` | `FRESHNESS_WEIGHT = 0.368`（硬编码） | `Config.load_cached().retrieval.freshness_weight` |
+| `freshness.py` | `FreshnessParams(half_life_days=7.0)`（**硬编码！**） | `FreshnessParams.from_config()` → `decay.tau=10.71` |
+| `dedup.py` | `DEFAULT_DEDUP_THRESHOLD = 0.95`（硬编码） | `Config.load_cached().dedup.threshold` |
+| `reranker.py` | `DEFAULT_RERANK_MODEL = "qwen3-reranker-0.6b:latest"`（硬编码） | `Config.load_cached().server.rerank_model` |
+| `rebuild_limits.py` | `DEFAULT_WARN_MAX_FILES = 250_000` 等（硬编码） | `Config.load_cached().rebuild.*` |
+| `server.py` | `_from_env()` + 本地 `ServerConfig` dataclass | 全文件共 8 处改为 `Config.load_cached()` |
+| `inject_memory.py` | 7 个 `os.getenv("MENGPO_*")` 默认值 | `Config.load()` → `cfg.injection.memory_dir` |
+| `scripts/bridge.py` | `os.getenv("MENGPO_DB_PATH", ...)` | `Config.load_cached().storage.db_path` |
+| `scripts/s1_probe.py` | `os.getenv("MENGPO_DB_PATH", ...)` | `Config.load_cached().storage.db_path` |
+| `scripts/inject_sample.py` | 3 个 `os.getenv("MENGPO_*")` 默认值 | `Config.load_cached().*` |
+
+### 修复的 bug：decay.tau 不一致
+`FreshnessParams.half_life_days` 之前硬编码为 **7.0 天**，但 `bowl.yaml` 写的是 `decay.tau: 10.71`（基于 84 天数据的黄金特征推导值）。现在 `FreshnessParams.from_config()` 从碗中读取 `decay.tau=10.71`。**这是一个活动 bug**——自 v0.10.78 起代码与碗不一致。
+
+### 新增测试：`test_config.py`（17 个测试用例）
+覆盖：默认值、`bowl.yaml` 加载、文件缺失回落、7 种环境变量覆盖场景、空环境变量不覆盖、单例缓存、等值、dingzhen 健康检查。
+
+### 依赖
+`pyproject.toml` 新增 `pyyaml>=6.0`。
+
+### 升级说明
+- 无需手动迁移。旧环境变量（`MENGPO_DB_PATH`、`MENGPO_MEMORY_DIR` 等）继续生效，优先级高于 `bowl.yaml`。
+- E 盘部署只需在 `bowl.yaml` 中修改 `injection.memory_dir` 和 `storage.db_path`，无需设置环境变量。
+
+---
+
 # MengPo v0.10.79
 
 ## 智能日记时间注入

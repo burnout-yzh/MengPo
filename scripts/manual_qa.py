@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+UTC = timezone.utc
 from pathlib import Path
 
 from memory_mcp import ChunkInput, Database, store_memory_atomic

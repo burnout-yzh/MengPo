@@ -7,7 +7,8 @@ the secondary freshness score used only for re-ranking semantic candidates.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+UTC = timezone.utc
 from math import exp
 
 
@@ -24,9 +25,11 @@ class FreshnessParams:
     ``initial_strength``:
         The baseline memory strength right after effective recall.
     ``half_life_days``:
-        Effective half-life in days.
+        Effective half-life in days (= :yaml:`decay.tau` in bowl.yaml).
     ``shrink_factor``:
         Global multiplier to tighten/loosen freshness impact.
+        This is **not** the S3 shrink factor — S3 lives in
+        ``Sansheng_Stone`` and reads :yaml:`sansheng_stone.shrink_factor`.
     ``floor``:
         Lower bound to avoid exact zero when very old.
     """
@@ -36,8 +39,27 @@ class FreshnessParams:
     shrink_factor: float = 1.0
     floor: float = 0.01
 
+    @classmethod
+    def from_config(cls, decay_cfg=None):
+        """Create FreshnessParams from :yaml:`decay.*` in bowl.yaml.
 
-DEFAULT_PARAMS = FreshnessParams()
+        Parameters
+        ----------
+        decay_cfg:
+            A ``DecayConfig`` object, or ``None`` to auto-load from config.
+        """
+        if decay_cfg is None:
+            from .config import Config
+            decay_cfg = Config.load_cached().decay
+        return cls(
+            initial_strength=decay_cfg.initial_strength,
+            half_life_days=decay_cfg.tau,
+            shrink_factor=1.0,
+            floor=decay_cfg.floor,
+        )
+
+
+DEFAULT_PARAMS = FreshnessParams.from_config()
 
 
 def WangYou_Decay(

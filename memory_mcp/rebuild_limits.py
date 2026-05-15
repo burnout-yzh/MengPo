@@ -6,12 +6,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from .config import Config
 
 
-DEFAULT_WARN_MAX_FILES = 250_000  # WARNING_CHUNKS ~ 250k
-DEFAULT_HARD_MAX_FILES = 500_000  # MAX_CHUNKS ~ 500k
-DEFAULT_WARN_MAX_BYTES = 25 * 1024 * 1024 * 1024  # ~25 GiB @ 250k chunks
-DEFAULT_HARD_MAX_BYTES = 50 * 1024 * 1024 * 1024  # ~50 GiB @ 500k chunks
+# ── rebuild limits from bowl.yaml ────────────────────────────────────
+_cfg_rebuild = Config.load_cached().rebuild
+DEFAULT_WARN_MAX_FILES = _cfg_rebuild.warn_max_files   # WARNING_CHUNKS ~ 250k
+DEFAULT_HARD_MAX_FILES = _cfg_rebuild.hard_max_files   # MAX_CHUNKS ~ 500k
+DEFAULT_WARN_MAX_BYTES = _cfg_rebuild.warn_max_bytes   # ~25 GiB @ 250k chunks
+DEFAULT_HARD_MAX_BYTES = _cfg_rebuild.hard_max_bytes   # ~50 GiB @ 500k chunks
 
 
 @dataclass(frozen=True)

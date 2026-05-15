@@ -86,9 +86,81 @@ Without installing the package, use:
 PYTHONPATH=. python3 scripts/manual_qa.py
 ```
 
-## Configuration
+## Configuration — Single Source of Truth
 
-Core algorithm parameters (including decay constants, thresholds, etc.) are carried by `bowl.yaml` (The Bowl of MengPo). Developers may fine-tune according to their own cognitive fundamental frequency $R$.
+All parameters live in **`bowl.yaml`** (The Bowl of MengPo) at the repository root. The `memory_mcp/config.py` module reads the YAML on startup and feeds typed values to every module.
+
+### Priority Chain
+
+```
+environment variable  >  bowl.yaml value  >  code default
+```
+
+Set an env var like `MENGPO_DB_PATH` to temporarily override `storage.db_path` without touching the bowl.
+
+### Key Paths in bowl.yaml
+
+```yaml
+storage:
+  db_path: ./mengpo_memory.db      # SQLite database file
+  log_path: ./mcp_access.log       # MCP server access log
+
+injection:
+  memory_dir: ./memory              # Markdown diary directory to scan
+  batch_size: 15                    # Embedding batch size
+
+server:
+  ollama_base_url: http://127.0.0.1:11434
+  mcp_port: 18081
+  mcp_name: MengPo Memory Server
+  rerank_model: qwen3-reranker-0.6b
+```
+
+### Deploying on a Different Drive (e.g. E:)
+
+1. Copy the repository to `E:\MengPo\`
+2. Edit `bowl.yaml`:
+
+   ```yaml
+   storage:
+     db_path: E:\MengPo\mengpo_memory.db
+   injection:
+     memory_dir: E:\MengPo\memory
+   ```
+3. Run normally — no env vars or code changes needed.
+
+### Full Parameter Reference
+
+| bowl.yaml path | Config attribute | Type | Default |
+|---|---|---|---|
+| `embedding.model` | `embedding.model` | str | `qwen3-embedding-0.6b` |
+| `embedding.dim` | `embedding.dim` | int | 1024 |
+| `decay.tau` | `decay.tau` | float | 10.71 |
+| `decay.initial_strength` | `decay.initial_strength` | float | 1.0 |
+| `decay.floor` | `decay.floor` | float | 0.01 |
+| `retrieval.candidate_limit` | `retrieval.candidate_limit` | int | 45 |
+| `retrieval.result_limit` | `retrieval.result_limit` | int | 5 |
+| `retrieval.freshness_weight` | `retrieval.freshness_weight` | float | 0.368 |
+| `sansheng_stone.shrink_factor` | `sansheng_stone.shrink_factor` | float | 0.368 |
+| `dedup.threshold` | `dedup.threshold` | float | 0.95 |
+| `chunk.size_min` | `chunk.size_min` | int | 160 |
+| `chunk.size_max` | `chunk.size_max` | int | 500 |
+| `server.ollama_base_url` | `server.ollama_base_url` | str | `http://127.0.0.1:11434` |
+| `server.mcp_port` | `server.mcp_port` | int | 18081 |
+| `server.mcp_name` | `server.mcp_name` | str | `MengPo Memory Server` |
+| `server.rerank_model` | `server.rerank_model` | str | `qwen3-reranker-0.6b` |
+| `storage.db_path` | `storage.db_path` | str | `./mengpo_memory.db` |
+| `storage.log_path` | `storage.log_path` | str | `./mcp_access.log` |
+| `injection.memory_dir` | `injection.memory_dir` | str | `./memory` |
+| `injection.batch_size` | `injection.batch_size` | int | 15 |
+| `rebuild.warn_max_files` | `rebuild.warn_max_files` | int | 250000 |
+| `rebuild.hard_max_files` | `rebuild.hard_max_files` | int | 500000 |
+| `rebuild.warn_max_bytes` | `rebuild.warn_max_bytes` | int | 26843545600 |
+| `rebuild.hard_max_bytes` | `rebuild.hard_max_bytes` | int | 53687091200 |
+
+### Backward Compatibility
+
+All old environment variables (`MENGPO_DB_PATH`, `MENGPO_MEMORY_DIR`, `MENGPO_OLLAMA_URL`, etc.) continue to work and **take priority over** `bowl.yaml`.
 
 ## Rebuild Scan Limits (T15 precheck)
 

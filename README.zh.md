@@ -64,9 +64,81 @@ PYTHONPATH=. python3 scripts/manual_qa.py
 python3 scripts/check_consistency.py <db_path>
 ```
 
-## 配置说明
+## 配置说明 — 唯一配置源
 
-算法的核心参数（包括衰减常数、阈值等）均由 `bowl.yaml`（孟婆汤碗）承载，开发者可根据自身认知主频 $R$ 进行微调。
+所有参数由仓库根目录下的 **`bowl.yaml`**（孟婆汤碗）承载。`memory_mcp/config.py` 在启动时读取 YAML，为每个模块提供类型化的参数值。
+
+### 优先级链
+
+```
+环境变量  >  bowl.yaml 中的值  >  代码默认值
+```
+
+临时设置 `MENGPO_DB_PATH` 等环境变量可在不修改 bowl.yaml 的前提下覆盖 `storage.db_path`。
+
+### bowl.yaml 中的关键路径
+
+```yaml
+storage:
+  db_path: ./mengpo_memory.db      # SQLite 数据库文件
+  log_path: ./mcp_access.log       # MCP server 访问日志
+
+injection:
+  memory_dir: ./memory              # 待扫描的 Markdown 日记目录
+  batch_size: 15                    # 批量嵌入大小
+
+server:
+  ollama_base_url: http://127.0.0.1:11434
+  mcp_port: 18081
+  mcp_name: MengPo Memory Server
+  rerank_model: qwen3-reranker-0.6b
+```
+
+### 部署到其他盘（例如 E 盘）
+
+1. 将仓库复制到 `E:\MengPo\`
+2. 编辑 `bowl.yaml`：
+
+   ```yaml
+   storage:
+     db_path: E:\MengPo\mengpo_memory.db
+   injection:
+     memory_dir: E:\MengPo\memory
+   ```
+3. 正常运行 — 无需设置环境变量或修改代码。
+
+### 完整参数对照表
+
+| bowl.yaml 路径 | Config 属性 | 类型 | 默认值 |
+|---|---|---|---|
+| `embedding.model` | `embedding.model` | str | `qwen3-embedding-0.6b` |
+| `embedding.dim` | `embedding.dim` | int | 1024 |
+| `decay.tau` | `decay.tau` | float | 10.71 |
+| `decay.initial_strength` | `decay.initial_strength` | float | 1.0 |
+| `decay.floor` | `decay.floor` | float | 0.01 |
+| `retrieval.candidate_limit` | `retrieval.candidate_limit` | int | 45 |
+| `retrieval.result_limit` | `retrieval.result_limit` | int | 5 |
+| `retrieval.freshness_weight` | `retrieval.freshness_weight` | float | 0.368 |
+| `sansheng_stone.shrink_factor` | `sansheng_stone.shrink_factor` | float | 0.368 |
+| `dedup.threshold` | `dedup.threshold` | float | 0.95 |
+| `chunk.size_min` | `chunk.size_min` | int | 160 |
+| `chunk.size_max` | `chunk.size_max` | int | 500 |
+| `server.ollama_base_url` | `server.ollama_base_url` | str | `http://127.0.0.1:11434` |
+| `server.mcp_port` | `server.mcp_port` | int | 18081 |
+| `server.mcp_name` | `server.mcp_name` | str | `MengPo Memory Server` |
+| `server.rerank_model` | `server.rerank_model` | str | `qwen3-reranker-0.6b` |
+| `storage.db_path` | `storage.db_path` | str | `./mengpo_memory.db` |
+| `storage.log_path` | `storage.log_path` | str | `./mcp_access.log` |
+| `injection.memory_dir` | `injection.memory_dir` | str | `./memory` |
+| `injection.batch_size` | `injection.batch_size` | int | 15 |
+| `rebuild.warn_max_files` | `rebuild.warn_max_files` | int | 250000 |
+| `rebuild.hard_max_files` | `rebuild.hard_max_files` | int | 500000 |
+| `rebuild.warn_max_bytes` | `rebuild.warn_max_bytes` | int | 26843545600 |
+| `rebuild.hard_max_bytes` | `rebuild.hard_max_bytes` | int | 53687091200 |
+
+### 向后兼容
+
+所有旧环境变量（`MENGPO_DB_PATH`、`MENGPO_MEMORY_DIR`、`MENGPO_OLLAMA_URL` 等）继续生效，**优先级高于** `bowl.yaml`。
 
 ## 运维笔记
 

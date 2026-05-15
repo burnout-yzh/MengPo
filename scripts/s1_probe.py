@@ -14,10 +14,11 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from memory_mcp.config import Config
 from memory_mcp import Database
 from memory_mcp.retrieval import S1_vector_search, SEMANTIC_CANDIDATE_LIMIT
 
-DB_PATH = os.getenv("MENGPO_DB_PATH", str(Path.cwd() / "mengpo_memory.db"))
+DB_PATH = Config.load_cached().storage.db_path
 
 
 def main() -> None:

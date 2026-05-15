@@ -29,6 +29,7 @@ from pathlib import Path
 # Allow running from repo root without installing the package.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from memory_mcp.config import Config
 from memory_mcp import (
     ChunkInput,
     Database,
@@ -36,15 +37,16 @@ from memory_mcp import (
 )
 from memory_mcp.embeddings import OllamaEmbeddingClient, EmbeddingError
 
-# ── Configuration ──────────────────────────────────────────────────────────
-
-DB_PATH = os.getenv("MENGPO_DB_PATH", str(Path.cwd() / "mengpo_memory.db"))
-MEMORY_DIR = os.getenv("MENGPO_MEMORY_DIR", str(Path.cwd() / "memory"))
-CHUNK_MIN_SIZE = int(os.getenv("MENGPO_CHUNK_MIN_SIZE", "160"))
-CHUNK_SIZE = int(os.getenv("MENGPO_CHUNK_SIZE", "500"))
-BATCH_SIZE = int(os.getenv("MENGPO_BATCH_SIZE", "15"))
-OLLAMA_URL = os.getenv("MENGPO_OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.getenv("MENGPO_OLLAMA_MODEL", "qwen3-embedding-0.6b")
+# ── Configuration — all from bowl.yaml, env vars override ────────────────
+_cfg = Config.load()
+_memory_dir = _cfg.injection.memory_dir
+_file_pattern = _cfg.injection.file_pattern
+DB_PATH = _cfg.storage.db_path
+CHUNK_MIN_SIZE = _cfg.chunk.size_min
+CHUNK_SIZE = _cfg.chunk.size_max
+BATCH_SIZE = _cfg.injection.batch_size
+OLLAMA_URL = _cfg.server.ollama_base_url
+OLLAMA_MODEL = _cfg.embedding.model
 
 
 # ── Chunking ───────────────────────────────────────────────────────────────
@@ -317,12 +319,12 @@ def _extract_diary_date(filename: str) -> str | None:
 
 # ── File scanner ───────────────────────────────────────────────────────────
 
-def scan_markdown_files(root: str | Path) -> list[Path]:
-    """Recursively collect ``*.md`` files under *root*."""
+def scan_markdown_files(root: str | Path, pattern: str = "*.md") -> list[Path]:
+    """Recursively collect files matching *pattern* under *root*."""
     root_path = Path(root).expanduser().resolve()
     if not root_path.is_dir():
         raise FileNotFoundError(f"Memory directory not found: {root_path}")
-    return sorted(root_path.rglob("*.md"))
+    return sorted(root_path.rglob(pattern))
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -339,7 +341,7 @@ def main() -> None:
 
     _log("=== MengPo Memory Injection ===")
     _log(f"  DB:        {DB_PATH}")
-    _log(f"  Memory dir: {MEMORY_DIR}")
+    _log(f"  Memory dir: {_memory_dir} ({_file_pattern})")
     _log(f"  Chunk size: {CHUNK_MIN_SIZE}-{CHUNK_SIZE} chars")
     _log(f"  Batch size: {BATCH_SIZE}")
     _log(f"  Ollama:    {OLLAMA_URL} / {OLLAMA_MODEL}")
@@ -347,7 +349,7 @@ def main() -> None:
     db = Database(DB_PATH)
     ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL)
 
-    files = scan_markdown_files(MEMORY_DIR)
+    files = scan_markdown_files(_memory_dir, _file_pattern)
     _log(f"  Files:      {len(files)}")
 
     total = 0
@@ -404,7 +406,7 @@ def main() -> None:
     for fp in files:
         # Derive a relative path for stable source_file dedup.
         try:
-            source_file = str(fp.relative_to(Path(MEMORY_DIR).resolve()))
+            source_file = str(fp.relative_to(Path(_memory_dir).resolve()))
         except ValueError:
             source_file = fp.name
 

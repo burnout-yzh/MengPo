@@ -14,7 +14,8 @@ from __future__ import annotations
 import sqlite3
 import sqlite_vec
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+UTC = timezone.utc
 from pathlib import Path
 from typing import Any, Iterator
 

@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from memory_mcp.config import Config
 from memory_mcp import (
     ChunkInput,
     Database,
@@ -23,9 +24,10 @@ from memory_mcp import (
 )
 from memory_mcp.embeddings import OllamaEmbeddingClient
 
-DB_PATH = os.getenv("MENGPO_DB_PATH", str(Path.cwd() / "mengpo_memory.db"))
-OLLAMA_URL = os.getenv("MENGPO_OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.getenv("MENGPO_OLLAMA_MODEL", "qwen3-embedding-0.6b")
+_cfg = Config.load_cached()
+DB_PATH = _cfg.storage.db_path
+OLLAMA_URL = _cfg.server.ollama_base_url
+OLLAMA_MODEL = _cfg.embedding.model
 
 
 def main() -> None:

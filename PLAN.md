@@ -1,15 +1,32 @@
 # PLAN.md
 
-## WORKING ON — v0.10.79
+## WORKING ON
 
-(empty — v0.10.79 items moved to DONE)
-
-
+(empty — see RELEASE_NOTES.zh.md)
 
 ---
 
 ## DONE
-### 智能日记时间注入 ✅
+
+### v0.11.0 — bowl.yaml 配置中心化重构 ✅
+- `memory_mcp/config.py` 新建：Config 类，完整映射 bowl.yaml 全部 10 个配置组
+- **所有**模块的硬编码参数/env-var 默认值统一为 config 驱动：
+  - `freshness.py`：`FreshnessParams.from_config()` — 修复 `half_life_days=7.0` → `decay.tau=10.71` bug
+  - `retrieval.py`：`SEMANTIC_CANDIDATE_LIMIT` / `RESULT_LIMIT` / `FRESHNESS_WEIGHT` 从 config 读
+  - `dedup.py`、`reranker.py`、`rebuild_limits.py`：各阈值/模型名从 config 读
+  - `server.py`：移除 `_from_env()`+本地`ServerConfig`，全量通过 `Config.load_cached()`
+  - `inject_memory.py`：7 个 `os.getenv()` 硬编码全部删除，从 config 读
+  - `scripts/bridge.py`、`s1_probe.py`、`inject_sample.py`：DB_PATH/OLLAMA_URL 从 config 读
+- `bowl.yaml` 新增 `injection.file_pattern: "*.md"`（默认只扫 md，注释声明其他格式未验证）
+- 优先级链：环境变量 > bowl.yaml > 代码默认值
+- 依赖：pyyaml>=6.0
+- 版本 0.11.0
+- 17 个新测试（`tests/test_config.py`）
+- 双语 RELEASE_NOTES + README 配置章节重写
+- 修复 Python 3.10 下 `from datetime import UTC` 预存兼容问题（11 文件）
+- 169/169 测试全部通过
+
+### v0.10.79 — 智能日记时间注入 + 去重策略优化 ✅
 - `_extract_diary_date()` 从文件名提取日期 + 可选时间（分钟精度）
 - 兼容 8 种格式：YYYY-MM-DD / YYYY_MM_DD / YYYYMMDD / MM-DD-YYYY / MMDDYYYY / 带 HHMM 时间
 - 单数字月日自动零补（`2026-1-5` → `2026-01-05`）

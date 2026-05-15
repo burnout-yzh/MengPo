@@ -10,13 +10,14 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+UTC = timezone.utc
 from math import log
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from .config import Config
 from .database import Database
 from .embeddings import OllamaEmbeddingClient
 from .retrieval import (
@@ -31,43 +32,23 @@ from .retrieval import (
 )
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Configuration (environment-driven, same keys as scaffolding version)
+#  Configuration — everything from bowl.yaml, env vars override
 # ═══════════════════════════════════════════════════════════════════════
 
-
-@dataclass(frozen=True)
-class ServerConfig:
-    db_path: str
-    log_path: str
-    ollama_base_url: str
-    ollama_model: str
-    candidate_limit: int
-    result_limit: int
-    mcp_port: int
-
-
-def _from_env() -> ServerConfig:
-    return ServerConfig(
-        db_path=os.getenv("MENGPO_DB_PATH", str(Path.cwd() / "mengpo_memory.db")),
-        log_path=os.getenv("MENGPO_LOG_PATH", str(Path.cwd() / "mcp_access.log")),
-        ollama_base_url=os.getenv("MENGPO_OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
-        ollama_model=os.getenv("MENGPO_OLLAMA_MODEL", "qwen3-embedding-0.6b"),
-        candidate_limit=int(os.getenv("MENGPO_CANDIDATE_LIMIT", str(SEMANTIC_CANDIDATE_LIMIT))),
-        result_limit=int(os.getenv("MENGPO_RESULT_LIMIT", str(RESULT_LIMIT))),
-        mcp_port=int(os.getenv("MENGPO_MCP_PORT", "18081")),
-    )
-
-
-CFG = _from_env()
+_cfg = Config.load_cached()
+_cfg_server = _cfg.server
+_cfg_storage = _cfg.storage
+_cfg_retrieval = _cfg.retrieval
+_cfg_embedding = _cfg.embedding
 
 logging.basicConfig(
-    filename=CFG.log_path,
+    filename=_cfg_storage.log_path,
     level=logging.INFO,
     format="%(asctime)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-mcp = FastMCP(os.getenv("MENGPO_MCP_NAME", "MengPo Memory Server"), port=CFG.mcp_port)
+mcp = FastMCP(_cfg_server.mcp_name, port=_cfg_server.mcp_port)
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Shared state
@@ -79,7 +60,7 @@ _db: Database | None = None
 def _get_db() -> Database:
     global _db
     if _db is None:
-        _db = Database(CFG.db_path)
+        _db = Database(_cfg_storage.db_path)
     return _db
 
 
@@ -116,10 +97,10 @@ def get_relevant_memories(query: str, session_id: str = "") -> str:
         candidates = S1_vector_search(
             db,
             query,
-            candidate_limit=CFG.candidate_limit,
+            candidate_limit=_cfg_retrieval.candidate_limit,
             embed_client=OllamaEmbeddingClient(
-                base_url=CFG.ollama_base_url,
-                model=CFG.ollama_model,
+                base_url=_cfg_server.ollama_base_url,
+                model=_cfg_embedding.model,
             ),
         )
     except FileNotFoundError:
@@ -134,12 +115,12 @@ def get_relevant_memories(query: str, session_id: str = "") -> str:
     # slice the cached result without re-ranking.
     ranked_all = Samsara_Rank(
         candidates,
-        candidate_limit=CFG.candidate_limit,
+        candidate_limit=_cfg_retrieval.candidate_limit,
         result_limit=len(candidates),
     )
 
     # ── Deliver top-N, cache full ranked list for expand ──
-    delivery = ranked_all[: CFG.result_limit]
+    delivery = ranked_all[: _cfg_retrieval.result_limit]
 
     if session_id:
         _session_cache[session_id] = {
@@ -241,7 +222,7 @@ def expand_retrieval(session_id: str) -> str:
     cursor: int = cached["cursor"]
 
     # Direct slice — already blend-sorted, no re-ranking needed.
-    batch = ranked[cursor:cursor + CFG.result_limit]
+    batch = ranked[cursor:cursor + _cfg_retrieval.result_limit]
     cached["cursor"] = cursor + len(batch)
 
     if not batch:
@@ -362,8 +343,8 @@ def memory_stats() -> str:
 
 def main() -> None:
     print("MengPo MCP Server starting...")
-    print(f"  DB: {CFG.db_path}")
-    print(f"  Log: {CFG.log_path}")
+    print(f"  DB: {_cfg_storage.db_path}")
+    print(f"  Log: {_cfg_storage.log_path}")
     mcp.run(transport="stdio")
 
 

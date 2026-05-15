@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from .config import Config
 
 
-DEFAULT_DEDUP_THRESHOLD = 0.95
+# ── dedup threshold from bowl.yaml ────────────────────────────────────
+DEFAULT_DEDUP_THRESHOLD = Config.load_cached().dedup.threshold
 
 
 class ReviewVerdict(str, Enum):

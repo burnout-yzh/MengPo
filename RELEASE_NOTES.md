@@ -1,3 +1,48 @@
+# MengPo v0.11.0
+
+## bowl.yaml — Now the Single Source of Truth
+
+`config.py` reads all parameters from `bowl.yaml`. Every parameter defined in the bowl is now wired to the code. Priority chain: **environment variable > bowl.yaml > code default**.
+
+### New module: `memory_mcp/config.py`
+- `Config` class with 10 nested config groups (embedding, decay, retrieval, sansheng_stone, dedup, chunk, server, storage, injection, rebuild).
+- `Config.load()` — loads `bowl.yaml`, applies env var overrides.
+- `Config.load_cached()` — singleton cache for repeated calls.
+- `Config._find_bowl_yaml()` — auto-discovers `bowl.yaml` from CWD or repo root.
+- `Config._apply_env_overrides()` — env vars supersede YAML values when set.
+
+### Modules migrated from hardcoded defaults to Config:
+
+| Module | Before | After |
+|--------|--------|-------|
+| `retrieval.py` | `SEMANTIC_CANDIDATE_LIMIT = 45` (hardcoded) | `Config.load_cached().retrieval.candidate_limit` |
+| `retrieval.py` | `RESULT_LIMIT = 5` (hardcoded) | `Config.load_cached().retrieval.result_limit` |
+| `retrieval.py` | `FRESHNESS_WEIGHT = 0.368` (hardcoded) | `Config.load_cached().retrieval.freshness_weight` |
+| `freshness.py` | `FreshnessParams(half_life_days=7.0)` (hardcoded!) | `FreshnessParams.from_config()` → `decay.tau=10.71` |
+| `dedup.py` | `DEFAULT_DEDUP_THRESHOLD = 0.95` (hardcoded) | `Config.load_cached().dedup.threshold` |
+| `reranker.py` | `DEFAULT_RERANK_MODEL = "qwen3-reranker-0.6b:latest"` (hardcoded) | `Config.load_cached().server.rerank_model` |
+| `rebuild_limits.py` | `DEFAULT_WARN_MAX_FILES = 250_000` etc. (hardcoded) | `Config.load_cached().rebuild.*` |
+| `server.py` | `_from_env()` + local `ServerConfig` dataclass | `Config.load_cached()` throughout, 8 call sites updated |
+| `inject_memory.py` | 7 `os.getenv("MENGPO_*")` defaults | `Config.load()` → `cfg.injection.memory_dir` |
+| `scripts/bridge.py` | `os.getenv("MENGPO_DB_PATH", ...)` | `Config.load_cached().storage.db_path` |
+| `scripts/s1_probe.py` | `os.getenv("MENGPO_DB_PATH", ...)` | `Config.load_cached().storage.db_path` |
+| `scripts/inject_sample.py` | 3 `os.getenv("MENGPO_*")` defaults | `Config.load_cached().*` |
+
+### Bug fixed: `decay.tau` mismatch
+`FreshnessParams.half_life_days` was hardcoded to **7.0 days**, while `bowl.yaml` specifies `decay.tau: 10.71` (the correct 84-day-data-derived value). Now `FreshnessParams.from_config()` reads `decay.tau=10.71` from the bowl. **This was an active bug** — the code and the bowl were out of sync since v0.10.78.
+
+### New tests: `test_config.py` (17 tests)
+Covers: default values, `bowl.yaml` loading, missing file fallback, 7 env var override scenarios, empty env no-op, singleton cache, equality, dingzhen health check.
+
+### Dependency
+`pyyaml>=6.0` added to `pyproject.toml`.
+
+### Upgrade notes
+- No manual migration needed. Old env vars (`MENGPO_DB_PATH`, `MENGPO_MEMORY_DIR`, etc.) continue to work with higher priority than `bowl.yaml`.
+- For E-drive deployment, simply edit `bowl.yaml`'s `injection.memory_dir` and `storage.db_path` instead of setting env vars.
+
+---
+
 # MengPo v0.10.79
 
 ## Smart Diary Date Injection

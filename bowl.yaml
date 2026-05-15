@@ -170,6 +170,12 @@ injection:
   #   建议：指向 Obsidian vault 或日记文件夹的绝对路径。
   memory_dir: ./memory
 
+  # 扫描文件 glob 模式。
+  #   默认 "*.md"。可改为 "*.txt" 等，但其他格式未经过验证，
+  #   chunker 的行为可能不完全适配非 Markdown 文本。
+  #   修改前请确认你的数据格式与 chunker 兼容。
+  file_pattern: "*.md"
+
   # 批量嵌入大小。一次 Ollama /api/embed 调用嵌入的 chunk 数。
   #   大 batch = 更快（减少 HTTP 往返），但单次调用更重。
   #   建议：5 ~ 20。15 在 qwen3-embedding-0.6b 上实测 ~0.3s/batch。
