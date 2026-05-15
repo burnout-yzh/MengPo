@@ -1,6 +1,27 @@
 # MengPo v0.10.79
 
-> In development — smart diary time injection, dedup scan pagination.
+## Smart Diary Date Injection
+`_extract_diary_date()` extracts the original creation date from diary filenames.
+
+- 8 date formats supported: `YYYY-MM-DD`, `YYYY_MM_DD`, `YYYYMMDD`, `MM-DD-YYYY`, `MMDDYYYY`
+- Optional HHMM time extraction (minute precision, e.g. `2026-03-19-0820.md` → `2026-03-19T08:20`)
+- Single-digit month/day auto zero-padded (`2026-1-5` → `2026-01-05`)
+- Three-tier fallback: filename date → file mtime → CURRENT_TIMESTAMP
+- `store_memory_atomic()` now accepts optional `created_at` parameter (backward compatible)
+- 22 tests (`tests/test_diary_date.py`)
+
+**Why it matters:** Without this, all 145 diary files injected during migration would have the same `created_at`, collapsing WangYou_Decay freshness scoring.
+
+## Dedup Strategy — Zero Ollama Re-embedding
+The dedup similarity scan no longer re-embeds chunks via `embed_batch()`.
+
+- Vectors already stored in `chunks_vec` during injection → reused directly
+- `_vec_blob_to_json()` converts sqlite-vec BLOB format to JSON for MATCH queries
+- SQL JOIN `chunks_meta` + `chunks_vec` replaces the batch-embed loop
+- 8 tests (`tests/test_vec_blob.py`)
+
+## Test Suite
+- 152 tests, all passing (130 existing + 22 new)
 
 ---
 

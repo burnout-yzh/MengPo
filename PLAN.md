@@ -2,19 +2,28 @@
 
 ## WORKING ON — v0.10.79
 
-### 智能日记时间注入
-- `inject_memory.py` 从文件名提取日期作为 `created_at`
-- 策略：匹配 `YYYY-MM-DD` 格式或者`MM-DD-YYYY`格式 → 日期字符串；匹配不到 → 文件 metadata 创建时间 (mtime)；再匹配不到 → 当前时间
-- **为何重要**：当前所有 chunk 的 `created_at` 都是注入时刻。日记文件 `2026-05-14.md` 的 chunk 应该显示为 5月14日创建，不是注入时的 7月某日。这直接影响 WangYou_Decay 的新鲜度计算。
+(empty — v0.10.79 items moved to DONE)
 
-### 去重策略优化
-- ~~Dedup 扫描分批~~ → **不需要重新嵌入**：注入阶段已将所有 chunk 向量存入 `chunks_vec`。Dedup 扫描只需复用这些向量做 vec0 搜索，不额外调用 Ollama。
-- 当前做法是一次 `embed_batch()` 全部重嵌，既冗余又慢。改为直接从 `chunks_vec` 取 rowid 做 `MATCH` 查询。
 
 
 ---
 
 ## DONE
+### 智能日记时间注入 ✅
+- `_extract_diary_date()` 从文件名提取日期 + 可选时间（分钟精度）
+- 兼容 8 种格式：YYYY-MM-DD / YYYY_MM_DD / YYYYMMDD / MM-DD-YYYY / MMDDYYYY / 带 HHMM 时间
+- 单数字月日自动零补（`2026-1-5` → `2026-01-05`）
+- 非法日期拒绝（month 13, day 30, year < 2020）
+- `created_at` 写入：文件名日期 → 文件 mtime → CURRENT_TIMESTAMP（三级 fallback）
+- `store_memory_atomic()` 新增可选 `created_at` 参数，向后兼容
+- 22 个测试覆盖（`tests/test_diary_date.py`）
+
+### 去重策略优化 ✅
+- 不再重新调用 Ollama `embed_batch()` — 直接从 `chunks_vec` 取已存向量
+- `_vec_blob_to_json()` 转换 sqlite-vec BLOB → JSON 用于 MATCH 查询
+- JOIN `chunks_meta` + `chunks_vec` 替代 batch-embed 循环
+- 8 个测试覆盖（`tests/test_vec_blob.py`）
+
 
 ### v0.10.78 — bowl.yaml + 增量更新 + Dedup 裁决
 - bowl.yaml（乾+坤）、content-hash 增量更新、dedup LLM 裁决链路

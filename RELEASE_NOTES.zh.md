@@ -1,6 +1,27 @@
 # MengPo v0.10.79
 
-> 开发中 — 智能日记时间注入、Dedup 扫描分批。
+## 智能日记时间注入
+`_extract_diary_date()` 从日记文件名中提取原始创建日期。
+
+- 支持 8 种日期格式：`YYYY-MM-DD`、`YYYY_MM_DD`、`YYYYMMDD`、`MM-DD-YYYY`、`MMDDYYYY`
+- 可选 HHMM 时间提取（分钟精度，如 `2026-03-19-0820.md` → `2026-03-19T08:20`）
+- 单数字月日自动零补（`2026-1-5` → `2026-01-05`）
+- 三级 fallback：文件名日期 → 文件 mtime → CURRENT_TIMESTAMP
+- `store_memory_atomic()` 新增可选 `created_at` 参数，向后兼容
+- 22 个测试（`tests/test_diary_date.py`）
+
+**为什么重要：** 没有此功能，迁移时 145 个日记文件的 chunk 将全部获得相同 `created_at`，导致 WangYou_Decay 新鲜度评分失效。
+
+## 去重策略 — 零 Ollama 重嵌入
+去重相似度扫描不再通过 `embed_batch()` 重新嵌入。
+
+- 注入阶段已写入 `chunks_vec` 的向量直接复用
+- `_vec_blob_to_json()` 将 sqlite-vec BLOB 格式转为 JSON 用于 MATCH 查询
+- SQL JOIN `chunks_meta` + `chunks_vec` 替代批量嵌入循环
+- 8 个测试（`tests/test_vec_blob.py`）
+
+## 测试套件
+- 152 个测试，全部通过（130 已有 + 22 新增）
 
 ---
 
