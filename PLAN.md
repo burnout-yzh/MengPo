@@ -10,7 +10,8 @@
 
 ### v0.11.0 — bowl.yaml 配置中心化重构 ✅
 - `memory_mcp/config.py` 新建：Config 类，完整映射 bowl.yaml 全部 10 个配置组
-- **所有**模块的硬编码参数/env-var 默认值统一为 config 驱动：
+- **所有**模块的硬编码参数/env-var 默认值统一为 config 驱动
+- 新增首次注入友好体验：空库时自动后台注入，返回"欢迎使用，首次嵌入可能需要2分钟"：
   - `freshness.py`：`FreshnessParams.from_config()` — 修复 `half_life_days=7.0` → `decay.tau=10.71` bug
   - `retrieval.py`：`SEMANTIC_CANDIDATE_LIMIT` / `RESULT_LIMIT` / `FRESHNESS_WEIGHT` 从 config 读
   - `dedup.py`、`reranker.py`、`rebuild_limits.py`：各阈值/模型名从 config 读

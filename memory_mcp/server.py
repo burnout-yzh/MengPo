@@ -57,11 +57,63 @@ mcp = FastMCP(_cfg_server.mcp_name, port=_cfg_server.mcp_port)
 _db: Database | None = None
 
 
+import subprocess
+import sys
+import threading
+
+
 def _get_db() -> Database:
     global _db
     if _db is None:
         _db = Database(_cfg_storage.db_path)
     return _db
+
+
+# ── First-run injection flag ──────────────────────────────────────────────
+
+_INIT_FLAG = Path(__file__).resolve().parent.parent / ".mengpo_initialized"
+
+
+def _is_first_run() -> bool:
+    """Return True if the DB is empty and the init flag doesn't exist."""
+    if _INIT_FLAG.exists():
+        return False
+    db = _get_db()
+    counts = db.row_counts()
+    if counts.get("memories", 0) > 0:
+        # DB has data but no flag — create the flag and move on
+        _INIT_FLAG.write_text("", encoding="utf-8")
+        return False
+    return True
+
+
+def _trigger_initial_injection() -> None:
+    """Background: run inject_memory.py to populate the vector store."""
+    repo_root = _INIT_FLAG.resolve().parent
+    inject_script = repo_root / "scripts" / "inject_memory.py"
+    if not inject_script.is_file():
+        logging.error("First-run inject script not found: %s", inject_script)
+        return
+
+    def _run() -> None:
+        try:
+            result = subprocess.run(
+                [sys.executable, str(inject_script)],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode == 0:
+                logging.info("First-run injection OK (%d chunks)", result.stdout.count("Chunks:"))
+            else:
+                logging.error("First-run injection FAILED:\n%s", result.stderr)
+        except subprocess.TimeoutExpired:
+            logging.error("First-run injection timed out after 300s")
+        finally:
+            _INIT_FLAG.write_text("", encoding="utf-8")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 # Per-session S1 candidate cache for expand tool.
@@ -91,6 +143,15 @@ def get_relevant_memories(query: str, session_id: str = "") -> str:
         query: Natural-language search query.
         session_id: Optional session key to cache S1 results for expand.
     """
+    # ── First-run: auto-inject if the database is empty ──
+    if _is_first_run():
+        _trigger_initial_injection()
+        return json.dumps({
+            "message": "欢迎使用，首次嵌入可能需要2分钟",
+            "results": [],
+            "count": 0,
+        })
+
     db = _get_db()
 
     try:

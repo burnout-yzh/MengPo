@@ -11,6 +11,12 @@
 - `Config._find_bowl_yaml()` — auto-discovers `bowl.yaml` from CWD or repo root.
 - `Config._apply_env_overrides()` — env vars supersede YAML values when set.
 
+### First-Run Auto-Injection
+`get_relevant_memories` now detects an empty database on first call, spawns
+`inject_memory.py` in a background thread, and returns a friendly welcome
+message: *"欢迎使用，首次嵌入可能需要2分钟"*.  A `.mengpo_initialized` flag
+prevents repeated injection.
+
 ### Modules migrated from hardcoded defaults to Config:
 
 | Module | Before | After |
