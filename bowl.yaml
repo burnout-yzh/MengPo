@@ -193,6 +193,14 @@ injection:
   #   建议：5 ~ 20。15 在 qwen3-embedding-0.6b 上实测 ~0.3s/batch。
   batch_size: 15
 
+  # 白名单文件（相对 memory_dir 的路径）。
+  #   配置后，仅注入这里列出的文件 + whitelist_dirs 内文件。
+  whitelist_files: []
+
+  # 白名单目录（相对 memory_dir 的路径）。
+  #   配置后，仅注入这些目录下匹配 file_pattern 的文件。
+  whitelist_dirs: []
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  安全锁  —  rebuild 时的安全门限

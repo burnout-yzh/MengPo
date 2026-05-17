@@ -177,21 +177,40 @@ class StorageConfig:
 
 
 class InjectionConfig:
-    __slots__ = ("memory_dir", "file_pattern", "batch_size")
+    __slots__ = ("memory_dir", "file_pattern", "batch_size", "whitelist_files", "whitelist_dirs")
 
-    def __init__(self, memory_dir: str = "./memory", file_pattern: str = "*.md", batch_size: int = 15):
+    def __init__(
+        self,
+        memory_dir: str = "./memory",
+        file_pattern: str = "*.md",
+        batch_size: int = 15,
+        whitelist_files: list[str] | None = None,
+        whitelist_dirs: list[str] | None = None,
+    ):
         self.memory_dir = memory_dir
         self.file_pattern = file_pattern
         self.batch_size = batch_size
+        self.whitelist_files = list(whitelist_files or [])
+        self.whitelist_dirs = list(whitelist_dirs or [])
 
     def __repr__(self) -> str:
-        return f"InjectionConfig(memory_dir={self.memory_dir!r}, file_pattern={self.file_pattern!r}, batch_size={self.batch_size})"
+        return (
+            "InjectionConfig("
+            f"memory_dir={self.memory_dir!r}, file_pattern={self.file_pattern!r}, "
+            f"batch_size={self.batch_size}, whitelist_files={self.whitelist_files!r}, "
+            f"whitelist_dirs={self.whitelist_dirs!r})"
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, InjectionConfig):
             return NotImplemented
-        return (self.memory_dir == other.memory_dir and self.file_pattern == other.file_pattern
-                and self.batch_size == other.batch_size)
+        return (
+            self.memory_dir == other.memory_dir
+            and self.file_pattern == other.file_pattern
+            and self.batch_size == other.batch_size
+            and self.whitelist_files == other.whitelist_files
+            and self.whitelist_dirs == other.whitelist_dirs
+        )
 
 
 class RebuildConfig:
@@ -349,6 +368,8 @@ class Config:
                 memory_dir=_g_or(raw, "injection", "memory_dir", typ=str, default=d.injection.memory_dir),
                 file_pattern=_g_or(raw, "injection", "file_pattern", typ=str, default=d.injection.file_pattern),
                 batch_size=_g_or(raw, "injection", "batch_size", typ=int, default=d.injection.batch_size),
+                whitelist_files=_g_or(raw, "injection", "whitelist_files", typ=list, default=d.injection.whitelist_files),
+                whitelist_dirs=_g_or(raw, "injection", "whitelist_dirs", typ=list, default=d.injection.whitelist_dirs),
             ),
             rebuild=RebuildConfig(
                 warn_max_files=_g_or(raw, "rebuild", "warn_max_files", typ=int, default=d.rebuild.warn_max_files),
@@ -413,6 +434,8 @@ class Config:
                 memory_dir=_ov("MENGPO_MEMORY_DIR") or cfg.injection.memory_dir,
                 file_pattern=cfg.injection.file_pattern,
                 batch_size=int(_ov("MENGPO_BATCH_SIZE")) if _ov("MENGPO_BATCH_SIZE") is not None else cfg.injection.batch_size,
+                whitelist_files=cfg.injection.whitelist_files,
+                whitelist_dirs=cfg.injection.whitelist_dirs,
             ),
             rebuild=cfg.rebuild,
         )

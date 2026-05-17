@@ -11,6 +11,7 @@ import json
 from memory_mcp import ChunkInput, Database, store_memory_atomic
 from memory_mcp.freshness import FreshnessParams, WangYou_Decay
 from memory_mcp.scanner import scan_memory_dir
+from scripts.inject_memory import scan_markdown_files
 from memory_mcp.telemetry import append_event, append_round_event, make_event, make_round_event
 
 
@@ -141,6 +142,47 @@ class TelemetryTests(unittest.TestCase):
             self.assertIn('"writeback_count": 2', line)
             self.assertIn('"protocol_valid": true', line)
             self.assertIn('"expand": true', line)
+
+
+class InjectionWhitelistTests(unittest.TestCase):
+    def test_scan_markdown_files_whitelist_dirs_and_files(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "memory").mkdir()
+            (root / "skills").mkdir()
+            (root / "notes").mkdir()
+
+            (root / "memory" / "a.md").write_text("a", encoding="utf-8")
+            (root / "skills" / "skill.md").write_text("s", encoding="utf-8")
+            (root / "notes" / "n.md").write_text("n", encoding="utf-8")
+            (root / "top.md").write_text("t", encoding="utf-8")
+
+            files = scan_markdown_files(
+                root,
+                "*.md",
+                whitelist_files=["top.md"],
+                whitelist_dirs=["memory", "notes"],
+            )
+
+            rels = {f.relative_to(root).as_posix() for f in files}
+            self.assertEqual(rels, {"memory/a.md", "notes/n.md", "top.md"})
+
+    def test_scan_markdown_files_whitelist_files_case_insensitive(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "memory").mkdir()
+            (root / "Memory.MD").write_text("root", encoding="utf-8")
+            (root / "memory" / "a.md").write_text("a", encoding="utf-8")
+
+            files = scan_markdown_files(
+                root,
+                "*.md",
+                whitelist_files=["memory.md"],
+                whitelist_dirs=["memory"],
+            )
+
+            rels = {f.relative_to(root).as_posix() for f in files}
+            self.assertEqual(rels, {"Memory.MD", "memory/a.md"})
 
 
 if __name__ == "__main__":

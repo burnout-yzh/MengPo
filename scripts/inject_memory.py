@@ -36,6 +36,8 @@ from memory_mcp.embeddings import OllamaEmbeddingClient, EmbeddingError
 _cfg = Config.load()
 _memory_dir = _cfg.injection.memory_dir
 _file_pattern = _cfg.injection.file_pattern
+_whitelist_files = _cfg.injection.whitelist_files
+_whitelist_dirs = _cfg.injection.whitelist_dirs
 DB_PATH = _cfg.storage.db_path
 CHUNK_MIN_SIZE = _cfg.chunk.size_min
 CHUNK_SIZE = _cfg.chunk.size_max
@@ -324,12 +326,42 @@ def _extract_diary_date(filename: str) -> str | None:
 
 # ── File scanner ───────────────────────────────────────────────────────────
 
-def scan_markdown_files(root: str | Path, pattern: str = "*.md") -> list[Path]:
-    """Recursively collect files matching *pattern* under *root*."""
+def scan_markdown_files(
+    root: str | Path,
+    pattern: str = "*.md",
+    whitelist_files: list[str] | None = None,
+    whitelist_dirs: list[str] | None = None,
+) -> list[Path]:
+    """Recursively collect files matching *pattern* under *root* with optional allowlists."""
     root_path = Path(root).expanduser().resolve()
     if not root_path.is_dir():
         raise FileNotFoundError(f"Memory directory not found: {root_path}")
-    return sorted(root_path.rglob(pattern))
+
+    files = sorted(root_path.rglob(pattern))
+    allow_file_set = {
+        p.strip().replace("\\", "/").lstrip("/")
+        for p in (whitelist_files or [])
+        if isinstance(p, str) and p.strip()
+    }
+    allow_file_set_ci = {p.casefold() for p in allow_file_set}
+    allow_dir_list = [
+        p.strip().replace("\\", "/").rstrip("/")
+        for p in (whitelist_dirs or [])
+        if isinstance(p, str) and p.strip()
+    ]
+
+    if not allow_file_set and not allow_dir_list:
+        return files
+
+    filtered: list[Path] = []
+    for fp in files:
+        rel = fp.relative_to(root_path).as_posix()
+        if rel.casefold() in allow_file_set_ci:
+            filtered.append(fp)
+            continue
+        if any(rel == d or rel.startswith(d + "/") for d in allow_dir_list):
+            filtered.append(fp)
+    return filtered
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -348,6 +380,10 @@ def main() -> None:
     _log("=== MengPo Memory Injection ===")
     _log(f"  DB:        {DB_PATH}")
     _log(f"  Memory dir: {_memory_dir} ({_file_pattern})")
+    if _whitelist_dirs:
+        _log(f"  Whitelist dirs: {len(_whitelist_dirs)}")
+    if _whitelist_files:
+        _log(f"  Whitelist files: {len(_whitelist_files)}")
     _log(f"  Chunk size: {CHUNK_MIN_SIZE}-{CHUNK_SIZE} chars")
     _log(f"  Batch size: {BATCH_SIZE}")
     _log(f"  Ollama:    {OLLAMA_URL} / {OLLAMA_MODEL}")
@@ -355,7 +391,12 @@ def main() -> None:
     db = Database(DB_PATH)
     ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL, validate_dim=True)
 
-    files = scan_markdown_files(_memory_dir, _file_pattern)
+    files = scan_markdown_files(
+        _memory_dir,
+        _file_pattern,
+        whitelist_files=_whitelist_files,
+        whitelist_dirs=_whitelist_dirs,
+    )
     _log(f"  Files:      {len(files)}")
 
     total = 0
