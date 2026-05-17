@@ -10,6 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
+import threading
 from datetime import datetime, timezone
 UTC = timezone.utc
 from math import log
@@ -63,11 +66,6 @@ mcp = FastMCP(_cfg_server.mcp_name, port=_cfg_server.mcp_port)
 
 _db: Database | None = None
 _db_lock = threading.Lock()
-
-
-import subprocess
-import sys
-import threading
 
 
 def _get_db() -> Database:

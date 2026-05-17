@@ -180,6 +180,7 @@ injection:
   # markdown 记忆文件的根目录。
   #   当 whitelist_files / whitelist_dirs 都为空时：递归扫描该目录下所有匹配 file_pattern 的文件。
   #   当任一白名单非空时：仅注入白名单命中的文件。
+  #   常见坑：若将 memory_dir 指到 ...\[agentworkspace]\memory，根目录 MEMORY.md 不会被扫描；此时应改为上级目录并配白名单。
   #   建议：指向 Obsidian vault 或日记文件夹的绝对路径。
   #   或者新建 ./memory/ 文件夹并向其中放置.md文件
   memory_dir: ./memory
@@ -199,6 +200,7 @@ injection:
   #   示例：
   #     - memory.md
   #     - inbox/today.md
+  #   若需要注入根目录主记忆文件，请显式加入 MEMORY.md。
   #   会与 whitelist_dirs 取并集。
   whitelist_files:
     - memory.md
