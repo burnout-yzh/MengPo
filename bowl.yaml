@@ -177,7 +177,9 @@ storage:
 
 injection:
 
-  # markdown 记忆文件的根目录。递归扫描所有 *.md。
+  # markdown 记忆文件的根目录。
+  #   当 whitelist_files / whitelist_dirs 都为空时：递归扫描该目录下所有匹配 file_pattern 的文件。
+  #   当任一白名单非空时：仅注入白名单命中的文件。
   #   建议：指向 Obsidian vault 或日记文件夹的绝对路径。
   #   或者新建 ./memory/ 文件夹并向其中放置.md文件
   memory_dir: ./memory
@@ -193,13 +195,22 @@ injection:
   #   建议：5 ~ 20。15 在 qwen3-embedding-0.6b 上实测 ~0.3s/batch。
   batch_size: 15
 
-  # 白名单文件（相对 memory_dir 的路径）。
-  #   配置后，仅注入这里列出的文件 + whitelist_dirs 内文件。
-  whitelist_files: []
+  # 白名单文件（相对 memory_dir 的路径，大小写不敏感）。
+  #   示例：
+  #     - memory.md
+  #     - inbox/today.md
+  #   会与 whitelist_dirs 取并集。
+  whitelist_files:
+    - memory.md
 
   # 白名单目录（相对 memory_dir 的路径）。
-  #   配置后，仅注入这些目录下匹配 file_pattern 的文件。
-  whitelist_dirs: []
+  #   会递归包含目录下所有匹配 file_pattern 的文件。
+  #   示例：
+  #     - memory
+  #     - memory/daily
+  #   会与 whitelist_files 取并集。
+  whitelist_dirs:
+    - memory
 
 
 # ═══════════════════════════════════════════════════════════════════════════
