@@ -71,6 +71,8 @@ def _require_chunks(chunks: Sequence[ChunkInput]) -> None:
         if c.chunk_index in seen:
             raise AtomicStoreError(f"duplicate chunk_index={c.chunk_index}")
         seen.add(c.chunk_index)
+        if not isinstance(c.embedding, bytes):
+            raise AtomicStoreError(f"chunk.embedding must be bytes at chunk_index={c.chunk_index}")
         if len(c.embedding) == 0:
             raise AtomicStoreError("chunk.embedding must not be empty")
         try:

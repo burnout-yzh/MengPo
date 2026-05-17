@@ -39,7 +39,7 @@ def main() -> None:
         sys.exit(1)
 
     db = Database(DB_PATH)
-    ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL)
+    ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL, validate_dim=True)
 
     files = sorted(sample_dir.glob("*.md"))
     total = 0

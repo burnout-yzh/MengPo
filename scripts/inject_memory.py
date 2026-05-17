@@ -353,7 +353,7 @@ def main() -> None:
     _log(f"  Ollama:    {OLLAMA_URL} / {OLLAMA_MODEL}")
 
     db = Database(DB_PATH)
-    ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL)
+    ec = OllamaEmbeddingClient(base_url=OLLAMA_URL, model=OLLAMA_MODEL, validate_dim=True)
 
     files = scan_markdown_files(_memory_dir, _file_pattern)
     _log(f"  Files:      {len(files)}")

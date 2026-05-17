@@ -121,6 +121,7 @@ def S1_vector_search(
         embed_client = OllamaEmbeddingClient(
             base_url=_cfg_server.ollama_base_url,
             model=_cfg_embedding.model,
+            validate_dim=True,
         )
     if now is None:
         now = datetime.now(UTC)

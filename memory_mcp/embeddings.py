@@ -47,6 +47,7 @@ class OllamaEmbeddingClient:
     retry_count: int = EMBEDDING_RETRY_COUNT
     poster: HttpPoster = _default_poster
     keep_alive: int | float | None = None  # seconds: 0=unload immediately, None=use Ollama default (5m)
+    validate_dim: bool = False
 
     def __post_init__(self) -> None:
         if self.timeout != EMBEDDING_TIMEOUT_SECONDS:
@@ -88,7 +89,7 @@ class OllamaEmbeddingClient:
         except json.JSONDecodeError as exc:
             raise EmbeddingError("embedding endpoint returned invalid JSON") from exc
 
-        return _extract_embedding(data)
+        return _extract_embedding(data, expected_dim=EXPECTED_EMBEDDING_DIM if self.validate_dim else None)
 
     def unload(self) -> None:
         """Tell Ollama to immediately unload the model from GPU memory.
@@ -151,14 +152,18 @@ class OllamaEmbeddingClient:
         except json.JSONDecodeError as exc:
             raise EmbeddingError("batch embedding returned invalid JSON") from exc
 
-        return _extract_batch_embeddings(data, expected_count=len(texts))
+        return _extract_batch_embeddings(
+            data,
+            expected_count=len(texts),
+            expected_dim=EXPECTED_EMBEDDING_DIM if self.validate_dim else None,
+        )
 
 
 def _join_url(base_url: str, path: str) -> str:
     return base_url.rstrip("/") + path
 
 
-def _extract_embedding(data: object) -> list[float]:
+def _extract_embedding(data: object, *, expected_dim: int | None = None) -> list[float]:
     if not isinstance(data, dict):
         raise EmbeddingError("embedding response must be a JSON object")
 
@@ -178,14 +183,14 @@ def _extract_embedding(data: object) -> list[float]:
         if not isinstance(value, int | float):
             raise EmbeddingError("embedding vector must contain only numbers")
         vector.append(float(value))
-    if len(vector) != EXPECTED_EMBEDDING_DIM:
+    if expected_dim is not None and len(vector) != expected_dim:
         raise EmbeddingError(
-            f"embedding dimension mismatch: expected {EXPECTED_EMBEDDING_DIM}, got {len(vector)}"
+            f"embedding dimension mismatch: expected {expected_dim}, got {len(vector)}"
         )
     return vector
 
 
-def _extract_batch_embeddings(data: object, *, expected_count: int) -> list[list[float]]:
+def _extract_batch_embeddings(data: object, *, expected_count: int, expected_dim: int | None = None) -> list[list[float]]:
     """Parse Ollama ``/api/embed`` batch response.
 
     Expected shape: ``{"embeddings": [[f, ...], [f, ...], ...]}``
@@ -208,9 +213,9 @@ def _extract_batch_embeddings(data: object, *, expected_count: int) -> list[list
             if not isinstance(v, int | float):
                 raise EmbeddingError("embedding values must be numbers")
             vec.append(float(v))
-        if len(vec) != EXPECTED_EMBEDDING_DIM:
+        if expected_dim is not None and len(vec) != expected_dim:
             raise EmbeddingError(
-                f"embedding dimension mismatch: expected {EXPECTED_EMBEDDING_DIM}, got {len(vec)}"
+                f"embedding dimension mismatch: expected {expected_dim}, got {len(vec)}"
             )
         result.append(vec)
     return result
