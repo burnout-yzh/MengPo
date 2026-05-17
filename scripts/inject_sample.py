@@ -2,7 +2,6 @@
 """Inject sample data from tests/sample_data/ into the vector store for demos.
 
 Usage:
-    python scripts/inject_sample.py
     python -m scripts.inject_sample
 """
 
@@ -10,11 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from memory_mcp.config import Config
 from memory_mcp import (

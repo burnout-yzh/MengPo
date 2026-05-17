@@ -72,6 +72,11 @@ retrieval:
   #   建议：0.2 ~ 0.5。0.368 是 1/e，自然衰减常数。
   freshness_weight: 0.368        # 1/e
 
+  # 是否输出 S1 检索统计日志（候选数、相似度范围、新鲜度范围）。
+  #   false: 默认关闭，减少日志噪音。
+  #   true: 开启后写入服务日志（info）。
+  log_s1_stats: false
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  三生石写回  —  Sansheng_Stone  ·  S3 强化锚点
@@ -135,7 +140,7 @@ server:
   # Ollama 嵌入服务地址。通常为本机。
   ollama_base_url: http://127.0.0.1:11434
 
-  # MCP server 监听端口。改它前需要确认端口可用。
+  # MCP server 监听端口。改它前需要确认端口可用。请输入整数值。
   mcp_port: 18081
 
   # MCP server 在客户端显示的名字。
@@ -158,6 +163,12 @@ storage:
 
   # MCP 访问日志。
   log_path: ./mcp_access.log
+
+  # 调试日志是否额外写入文件（用于新环境排障）。
+  debug_log_to_file: false
+
+  # 调试日志文件路径（debug_log_to_file=true 时生效）。
+  debug_log_path: ./mcp_debug.log
 
 
 # ═══════════════════════════════════════════════════════════════════════════

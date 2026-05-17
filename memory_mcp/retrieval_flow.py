@@ -6,6 +6,7 @@ the existing policy helpers, while keeping semantic retrieval itself external.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 UTC = timezone.utc
@@ -19,6 +20,13 @@ from .retrieval import (
     process_retrieval_round,
 )
 from .telemetry import append_round_event, make_round_event
+
+
+def _append_round_event_best_effort(telemetry_log_file: str | Path, event: dict[str, object]) -> None:
+    try:
+        append_round_event(telemetry_log_file, event)
+    except Exception as exc:
+        logging.warning("telemetry append failed: %s", exc)
 
 
 @dataclass(frozen=True)
@@ -55,7 +63,7 @@ def run_retrieval_round(
             excluded_memory_ids=excluded,
         )
     except RetrievalProtocolError as exc:
-        append_round_event(
+        _append_round_event_best_effort(
             telemetry_log_file,
             make_round_event(
                 session_id=session_id,
@@ -88,7 +96,7 @@ def run_retrieval_round(
             )
 
     session_state.record_judged_ids(session_id, list(delivered_ids))
-    append_round_event(
+    _append_round_event_best_effort(
         telemetry_log_file,
         make_round_event(
             session_id=session_id,

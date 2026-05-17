@@ -9,6 +9,10 @@ UTC = timezone.utc
 from pathlib import Path
 
 
+_VALID_VERDICTS = {"duplicate", "false_positive"}
+_VALID_ACTIONS = {"reject", "merge_append"}
+
+
 @dataclass(frozen=True)
 class DedupAuditEvent:
     namespace: str
@@ -33,6 +37,10 @@ def make_dedup_audit_event(
     reason: str,
     merge_target_file: str | None,
 ) -> DedupAuditEvent:
+    if verdict not in _VALID_VERDICTS:
+        raise ValueError(f"invalid verdict: {verdict}")
+    if action not in _VALID_ACTIONS:
+        raise ValueError(f"invalid action: {action}")
     return DedupAuditEvent(
         namespace=namespace,
         incoming_content_hash=incoming_content_hash,

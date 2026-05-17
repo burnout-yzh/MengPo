@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sqlite3
 import sqlite_vec
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 UTC = timezone.utc
@@ -53,6 +54,7 @@ class Database:
     def __init__(self, path: str | Path = ":memory:"):
         self.path = str(path)
         self.conn = connect(self.path)
+        self._tx_lock = threading.RLock()
 
     def close(self) -> None:
         try:
@@ -68,20 +70,21 @@ class Database:
         re-raised. This is the *only* write boundary callers should use —
         no partial commits are permitted inside.
         """
-        self.conn.execute("BEGIN IMMEDIATE;")
-        try:
-            yield self.conn
-        except BaseException:
-            # BaseException: catch KeyboardInterrupt too, so we never leak
-            # a half-open transaction.
+        with self._tx_lock:
+            self.conn.execute("BEGIN IMMEDIATE;")
             try:
-                self.conn.execute("ROLLBACK;")
-            except sqlite3.Error:
-                # Already rolled back by the engine (e.g. deferred FK failure).
-                pass
-            raise
-        else:
-            self.conn.execute("COMMIT;")
+                yield self.conn
+            except BaseException:
+                # BaseException: catch KeyboardInterrupt too, so we never leak
+                # a half-open transaction.
+                try:
+                    self.conn.execute("ROLLBACK;")
+                except sqlite3.Error:
+                    # Already rolled back by the engine (e.g. deferred FK failure).
+                    pass
+                raise
+            else:
+                self.conn.execute("COMMIT;")
 
     # Convenience for tests / ops.
     def row_counts(self) -> dict[str, int]:

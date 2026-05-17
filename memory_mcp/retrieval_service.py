@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import Config
 from .database import Database
 from .retrieval import RetrievalCandidate, SessionDeliveryState
 from .retrieval_flow import RetrievalFlowResult, run_retrieval_round
@@ -16,10 +18,13 @@ class RetrievalService:
     telemetry_log_file: str | Path
     enable_duoshe: bool = False
     duoshe_root: str | Path = "memory_test_files"
+    default_shrink_factor: float | None = None
 
     def __post_init__(self) -> None:
         self._session_state = SessionDeliveryState()
         self._duoshe_injected_sessions: set[str] = set()
+        if self.default_shrink_factor is None:
+            self.default_shrink_factor = Config.load_cached().sansheng_stone.shrink_factor
 
     def _load_duoshe_prompts(self) -> tuple[str, ...]:
         root = Path(self.duoshe_root)
@@ -28,7 +33,10 @@ class RetrievalService:
         for name in names:
             path = root / name
             if path.exists():
-                prompts.append(path.read_text(encoding="utf-8"))
+                try:
+                    prompts.append(path.read_text(encoding="utf-8"))
+                except Exception as exc:
+                    logging.warning("duoshe prompt read failed: %s (%s)", path, exc)
         return tuple(prompts)
 
     def run_round(
@@ -40,8 +48,9 @@ class RetrievalService:
         candidates: list[RetrievalCandidate],
         s2_effectiveness_map: dict[str, int] | None,
         expand: bool,
-        shrink_factor: float = 0.25,
+        shrink_factor: float | None = None,
     ) -> RetrievalFlowResult:
+        factor = self.default_shrink_factor if shrink_factor is None else shrink_factor
         result = run_retrieval_round(
             db=self.db,
             session_state=self._session_state,
@@ -52,7 +61,7 @@ class RetrievalService:
             s2_effectiveness_map=s2_effectiveness_map,
             telemetry_log_file=self.telemetry_log_file,
             expand=expand,
-            shrink_factor=shrink_factor,
+            shrink_factor=factor,
         )
         if not self.enable_duoshe:
             return result

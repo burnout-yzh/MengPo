@@ -18,8 +18,10 @@ does not change.
 
 from __future__ import annotations
 
-# Vector dimension: 1024 (qwen3-embedding-0.6b native dimension).
-DEFAULT_EMBEDDING_DIM = 1024
+from .config import Config
+
+# Vector dimension from bowl.yaml.
+DEFAULT_EMBEDDING_DIM = Config.load_cached().embedding.dim
 
 SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
@@ -47,9 +49,9 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """,
     # chunks_vec: regular table stand-in for sqlite-vec vec0 virtual table.
     # rowid is the join key with chunks_meta, matching vec0 convention.
-    """
+    f"""
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec
-        USING vec0(embedding FLOAT[1024]);
+        USING vec0(embedding FLOAT[{DEFAULT_EMBEDDING_DIM}]);
     """,
     """
     CREATE TABLE IF NOT EXISTS chunks_meta (

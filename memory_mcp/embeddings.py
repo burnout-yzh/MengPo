@@ -13,9 +13,12 @@ from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .config import Config
+
 EMBEDDING_TIMEOUT_SECONDS = 10.0
 EMBEDDING_RETRY_COUNT = 0
 DEFAULT_EMBEDDING_MODEL = "qwen3-embedding-0.6b"
+EXPECTED_EMBEDDING_DIM = Config.load_cached().embedding.dim
 
 
 class EmbeddingError(RuntimeError):
@@ -175,6 +178,10 @@ def _extract_embedding(data: object) -> list[float]:
         if not isinstance(value, int | float):
             raise EmbeddingError("embedding vector must contain only numbers")
         vector.append(float(value))
+    if len(vector) != EXPECTED_EMBEDDING_DIM:
+        raise EmbeddingError(
+            f"embedding dimension mismatch: expected {EXPECTED_EMBEDDING_DIM}, got {len(vector)}"
+        )
     return vector
 
 
@@ -201,5 +208,9 @@ def _extract_batch_embeddings(data: object, *, expected_count: int) -> list[list
             if not isinstance(v, int | float):
                 raise EmbeddingError("embedding values must be numbers")
             vec.append(float(v))
+        if len(vec) != EXPECTED_EMBEDDING_DIM:
+            raise EmbeddingError(
+                f"embedding dimension mismatch: expected {EXPECTED_EMBEDDING_DIM}, got {len(vec)}"
+            )
         result.append(vec)
     return result

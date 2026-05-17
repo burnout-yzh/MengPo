@@ -3,7 +3,6 @@
 
 Usage:
     python -m scripts.inject_memory
-    python scripts/inject_memory.py
 
 Environment variables:
     MENGPO_DB_PATH       — SQLite database path (default: ./mengpo_memory.db)
@@ -17,17 +16,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import struct
-import os
 import re
-import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-
-# Allow running from repo root without installing the package.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from memory_mcp.config import Config
 from memory_mcp import (
@@ -47,6 +42,16 @@ CHUNK_SIZE = _cfg.chunk.size_max
 BATCH_SIZE = _cfg.injection.batch_size
 OLLAMA_URL = _cfg.server.ollama_base_url
 OLLAMA_MODEL = _cfg.embedding.model
+
+
+_debug_logger = logging.getLogger("mengpo.inject_memory")
+if _cfg.storage.debug_log_to_file and not _debug_logger.handlers:
+    _debug_handler = logging.FileHandler(_cfg.storage.debug_log_path, encoding="utf-8")
+    _debug_handler.setLevel(logging.DEBUG)
+    _debug_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+    _debug_logger.addHandler(_debug_handler)
+    _debug_logger.setLevel(logging.DEBUG)
+    _debug_logger.propagate = False
 
 
 # ── Chunking ───────────────────────────────────────────────────────────────
@@ -331,6 +336,7 @@ def scan_markdown_files(root: str | Path, pattern: str = "*.md") -> list[Path]:
 
 def main() -> None:
     t0 = time.time()
+    t_embed_start = 0.0
     log_lines: list[str] = []
 
     def _log(msg: str) -> None:
@@ -355,6 +361,8 @@ def main() -> None:
     total = 0
     skipped = 0
     updated = 0
+    _debug_logger.debug("开始嵌入 当前0秒")
+    t_embed_start = time.time()
 
     # Batch queue — collect chunk texts + metadata, embed in groups of BATCH_SIZE.
     class _Queued:
@@ -396,6 +404,8 @@ def main() -> None:
                     created_at=q.created_at,
                 )
                 total += 1
+                if total % 200 == 0:
+                    _debug_logger.debug("%d条 已用时%.1f秒", total, time.time() - t_embed_start)
             except Exception as exc:
                 _log(f"  [fail] {q.source_file} chunk {q.chunk_index}: store error ({exc})")
                 skipped += 1
@@ -417,9 +427,7 @@ def main() -> None:
         else:
             # Fallback: file modification time
             mtime = fp.stat().st_mtime
-            created_at = datetime.fromtimestamp(mtime).strftime(
-                "%Y-%m-%dT%H:%M:%S.000Z"
-            )
+            created_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
         try:
             content = fp.read_text(encoding="utf-8")
@@ -470,6 +478,11 @@ def main() -> None:
     _log(f"  Skipped: {skipped} chunks (unchanged or errored)")
     counts = db.row_counts()
     _log(f"  DB now:  {counts['memories']} memories, {counts['chunks_meta']} meta, {counts['chunks_vec']} vec")
+    _debug_logger.debug(
+        "完成嵌入 当前总共存在%d条 总用时%.1f秒",
+        counts["chunks_meta"],
+        time.time() - t_embed_start,
+    )
 
     # ── Dedup similarity scan ──────────────────────────────────────────
     # Reuse vectors already in chunks_vec (written during injection).

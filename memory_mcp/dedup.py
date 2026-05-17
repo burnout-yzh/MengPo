@@ -48,8 +48,11 @@ def requires_review(similarity: float, *, threshold: float = DEFAULT_DEDUP_THRES
 def default_merge_target(*, source_file: str | None, namespace: str) -> str:
     """Resolve append/edit fallback target for false-positive merge flow."""
     if source_file and source_file.strip():
-        return source_file
-    normalized_namespace = namespace.strip().replace("/", "_")
+        candidate = source_file.strip().replace("\\", "/")
+        if candidate.startswith("/") or ":" in candidate or ".." in candidate.split("/"):
+            raise ValueError("unsafe merge target source_file")
+        return candidate
+    normalized_namespace = namespace.strip().replace("/", "_").replace("\\", "_")
     if not normalized_namespace:
         normalized_namespace = "default"
     return f"{normalized_namespace}_inbox.md"

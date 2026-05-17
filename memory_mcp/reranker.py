@@ -12,6 +12,7 @@ No extra dependencies, no new model to download.  Works with Ollama's
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
@@ -23,6 +24,7 @@ RERANK_RETRY_COUNT = 0
 
 # ── rerank model from bowl.yaml ──────────────────────────────────────
 DEFAULT_RERANK_MODEL = Config.load_cached().server.rerank_model
+RERANK_SCORE_FLOOR = Config.load_cached().decay.floor
 
 
 class RerankError(RuntimeError):
@@ -141,7 +143,10 @@ def _extract_results(data: object, documents: list[str]) -> list[RerankResult]:
             score_raw = row.get("relevance_score", row.get("score"))
             if not isinstance(score_raw, int | float):
                 raise RerankError("rerank result entries must include a numeric score")
-            results.append(RerankResult(index=index_raw, document=documents[index_raw], score=float(score_raw)))
+            score = float(score_raw)
+            if not math.isfinite(score):
+                score = RERANK_SCORE_FLOOR
+            results.append(RerankResult(index=index_raw, document=documents[index_raw], score=score))
         return sorted(results, key=lambda item: (-item.score, item.index))
 
     if all(isinstance(item, int | float) for item in raw_results):
@@ -149,7 +154,10 @@ def _extract_results(data: object, documents: list[str]) -> list[RerankResult]:
         if len(scores) != len(documents):
             raise RerankError("score list length must match document list length")
         for index, score in enumerate(scores):
-            results.append(RerankResult(index=index, document=documents[index], score=float(cast(int | float, score))))
+            value = float(cast(int | float, score))
+            if not math.isfinite(value):
+                value = RERANK_SCORE_FLOOR
+            results.append(RerankResult(index=index, document=documents[index], score=value))
         return sorted(results, key=lambda item: (-item.score, item.index))
 
     raise RerankError("unsupported rerank response shape")
@@ -197,10 +205,16 @@ class EmbeddingReranker:
 
         results: list[RerankResult] = []
         for idx, dv in enumerate(dvs):
+            if len(dv) != len(qv):
+                raise RerankError(
+                    f"embedding dimension mismatch for document index {idx}: query={len(qv)} doc={len(dv)}"
+                )
             dot = sum(a * b for a, b in zip(qv, dv))
             norm_q = _math.sqrt(sum(a * a for a in qv))
             norm_d = _math.sqrt(sum(a * a for a in dv))
             score = dot / (norm_q * norm_d) if norm_q * norm_d > 0 else 0.0
+            if not math.isfinite(score):
+                score = RERANK_SCORE_FLOOR
             results.append(RerankResult(index=idx, document=documents[idx], score=score))
 
         results.sort(key=lambda r: -r.score)

@@ -7,13 +7,17 @@ UTC = timezone.utc
 from pathlib import Path
 
 from memory_mcp import ChunkInput, Database, store_memory_atomic
+from memory_mcp.config import Config
 from memory_mcp.freshness import WangYou_Decay
 from memory_mcp.scanner import scan_memory_dir
 from memory_mcp.telemetry import append_event, make_event
 
 
+_EMBED_DIM = Config.load_cached().embedding.dim
+
+
 def chunk(i: int, text: str) -> ChunkInput:
-    v = [float(i + 1)] * 1024
+    v = [float(i + 1)] * _EMBED_DIM
     return ChunkInput(content=text, embedding=json.dumps(v, separators=(",", ":")).encode(), chunk_index=i)
 
 
@@ -40,9 +44,11 @@ def main() -> None:
             outside.write_text("# outside\n", encoding="utf-8")
             try:
                 (docs / "link_out.md").symlink_to(outside)
+                symlink_status = "ran"
             except OSError:
-                pass
+                symlink_status = "skipped"
             scan = scan_memory_dir(docs)
+            print(f"symlink_test={symlink_status}")
             print(f"scan_files={len(scan.files)} expected=1")
             print(f"scan_skipped_symlinks={len(scan.skipped_symlinks)} expected>=0")
 
@@ -64,8 +70,11 @@ def main() -> None:
                 s3_written_back=True,
             )
             log_path = root / "retrieval_events.jsonl"
-            append_event(log_path, event)
-            print(f"telemetry_lines={len(log_path.read_text(encoding='utf-8').splitlines())} expected=1")
+            try:
+                append_event(log_path, event)
+                print(f"telemetry_lines={len(log_path.read_text(encoding='utf-8').splitlines())} expected=1")
+            except OSError as exc:
+                print(f"telemetry_write=failed ({exc})")
         finally:
             db.close()
 

@@ -39,6 +39,7 @@ def scan_memory_dir(
     """
     if pattern is None:
         pattern = _cfg_scanner.injection.file_pattern
+    root = Path(path).expanduser().resolve()
     if not root.exists() or not root.is_dir():
         raise ValueError(f"scan root is not a directory: {root}")
 

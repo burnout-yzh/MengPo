@@ -59,16 +59,15 @@ class FreshnessParams:
         )
 
 
-DEFAULT_PARAMS = FreshnessParams.from_config()
-
-
 def WangYou_Decay(
     *,
     now: datetime,
     last_effective_recall_at: datetime,
-    params: FreshnessParams = DEFAULT_PARAMS,
+    params: FreshnessParams | None = None,
 ) -> float:
     """Compute normalized freshness score in [floor, initial_strength]."""
+    if params is None:
+        params = FreshnessParams.from_config()
     now_utc = _ensure_utc(now)
     recall_utc = _ensure_utc(last_effective_recall_at)
     delta_days = max(0.0, (now_utc - recall_utc).total_seconds() / 86400.0)

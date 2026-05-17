@@ -7,6 +7,8 @@ re-ranks inside the semantic candidate set, using a weighted geometric mean.
 
 from __future__ import annotations
 
+import logging
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 UTC = timezone.utc
@@ -22,10 +24,15 @@ from .config import Config
 
 # ── S1 / S2 parameters from bowl.yaml ─────────────────────────────────
 _cfg_retrieval = Config.load_cached().retrieval
+_cfg_server = Config.load_cached().server
+_cfg_embedding = Config.load_cached().embedding
 SEMANTIC_CANDIDATE_LIMIT = _cfg_retrieval.candidate_limit  # S1 full pool
 RESULT_LIMIT = _cfg_retrieval.result_limit                  # S2 delivery count
 FRESHNESS_WEIGHT = _cfg_retrieval.freshness_weight          # 1/e -- natural decay constant
+LOG_S1_STATS = _cfg_retrieval.log_s1_stats
 RANK_SCORE_EPSILON = 1e-12  # not in bowl.yaml, hard-coded stable
+MAX_SESSION_STATE = 1024
+_logger = logging.getLogger(__name__)
 
 
 class ProtocolErrorCode(str, Enum):
@@ -112,8 +119,8 @@ def S1_vector_search(
     """
     if embed_client is None:
         embed_client = OllamaEmbeddingClient(
-            base_url="http://127.0.0.1:11434",
-            model="qwen3-embedding-0.6b",
+            base_url=_cfg_server.ollama_base_url,
+            model=_cfg_embedding.model,
         )
     if now is None:
         now = datetime.now(UTC)
@@ -181,12 +188,17 @@ def S1_vector_search(
             source_file=cr["source_file"],
         ))
 
-    if results:
+    if results and LOG_S1_STATS:
         scores = [r.semantic_score for r in results]
         fresh_vals = [r.freshness_score for r in results]
-        print(f"[S1_Naihe_Bridge] vec search: {len(results)} candidates, "
-              f"sim range: {min(scores):.4f} - {max(scores):.4f}, "
-              f"freshness range: {min(fresh_vals):.4f} - {max(fresh_vals):.4f}")
+        _logger.info(
+            "[S1_Naihe_Bridge] vec search: %d candidates, sim range: %.4f - %.4f, freshness range: %.4f - %.4f",
+            len(results),
+            min(scores),
+            max(scores),
+            min(fresh_vals),
+            max(fresh_vals),
+        )
 
     return results
 
@@ -195,15 +207,23 @@ class SessionDeliveryState:
     """Tracks judged memory ids per session for expand filtering."""
 
     def __init__(self) -> None:
-        self._judged_by_session: dict[str, set[int]] = {}
+        self._judged_by_session: OrderedDict[str, set[int]] = OrderedDict()
+
+    def _touch_session(self, session_id: str) -> set[int]:
+        bucket = self._judged_by_session.get(session_id)
+        if bucket is None:
+            bucket = set()
+            self._judged_by_session[session_id] = bucket
+        self._judged_by_session.move_to_end(session_id)
+        while len(self._judged_by_session) > MAX_SESSION_STATE:
+            self._judged_by_session.popitem(last=False)
+        return bucket
 
     def excluded_ids(self, session_id: str) -> set[int]:
-        return set(self._judged_by_session.get(session_id, set()))
+        return set(self._touch_session(session_id))
 
     def record_judged_ids(self, session_id: str, memory_ids: list[int]) -> None:
-        if session_id not in self._judged_by_session:
-            self._judged_by_session[session_id] = set()
-        self._judged_by_session[session_id].update(memory_ids)
+        self._touch_session(session_id).update(memory_ids)
 
     def clear_session(self, session_id: str) -> None:
         self._judged_by_session.pop(session_id, None)

@@ -2,26 +2,22 @@
 """Naihe_Bridge + Samsara_Rank — S1→S2 end-to-end smoke test.
 
 Usage:
-    python scripts/bridge.py "your query"
     python -m scripts.bridge "your query"
 """
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from memory_mcp.config import Config
 from memory_mcp import Database
+from memory_mcp.embeddings import EmbeddingError
 from memory_mcp.retrieval import (
     S1_vector_search,
     Samsara_Rank,
     SEMANTIC_CANDIDATE_LIMIT,
     RESULT_LIMIT,
-    FRESHNESS_WEIGHT,
 )
 
 DB_PATH = Config.load_cached().storage.db_path
@@ -39,7 +35,11 @@ def main() -> None:
     db = Database(DB_PATH)
     try:
         # ── S1: vector search ──
-        candidates = S1_vector_search(db, query, candidate_limit=SEMANTIC_CANDIDATE_LIMIT)
+        try:
+            candidates = S1_vector_search(db, query, candidate_limit=SEMANTIC_CANDIDATE_LIMIT)
+        except (EmbeddingError, RuntimeError) as exc:
+            print(f"ERROR: retrieval failed ({exc})")
+            raise SystemExit(2)
         if not candidates:
             print("S1: no candidates found.")
             return

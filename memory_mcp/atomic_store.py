@@ -73,6 +73,16 @@ def _require_chunks(chunks: Sequence[ChunkInput]) -> None:
         seen.add(c.chunk_index)
         if len(c.embedding) == 0:
             raise AtomicStoreError("chunk.embedding must not be empty")
+        try:
+            embedding_text = c.embedding.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise AtomicStoreError(f"chunk.embedding invalid utf-8 at chunk_index={c.chunk_index}") from exc
+        try:
+            parsed = json.loads(embedding_text)
+        except json.JSONDecodeError as exc:
+            raise AtomicStoreError(f"chunk.embedding invalid json at chunk_index={c.chunk_index}") from exc
+        if not isinstance(parsed, list) or not parsed:
+            raise AtomicStoreError(f"chunk.embedding must be a non-empty json list at chunk_index={c.chunk_index}")
 
 
 def _trip(fault: FaultPoint | None, at: FaultPoint) -> None:
@@ -133,7 +143,7 @@ def store_memory_atomic(
                 _trip(fault, FaultPoint.BEFORE_VEC_INSERT)
                 _ = cur.execute(
                     "INSERT INTO chunks_vec (embedding) VALUES (?)",
-                    (chunk.embedding.decode("utf-8") if isinstance(chunk.embedding, bytes) else chunk.embedding,)  # JSON string for vec0,
+                    (chunk.embedding.decode("utf-8"),)  # JSON string for vec0,
                 )
                 rowid = cur.lastrowid
                 _trip(fault, FaultPoint.AFTER_VEC_INSERT)

@@ -55,22 +55,25 @@ class DecayConfig:
 
 
 class RetrievalConfig:
-    __slots__ = ("candidate_limit", "result_limit", "freshness_weight")
+    __slots__ = ("candidate_limit", "result_limit", "freshness_weight", "log_s1_stats")
 
-    def __init__(self, candidate_limit: int = 45, result_limit: int = 5, freshness_weight: float = 0.368):
+    def __init__(self, candidate_limit: int = 45, result_limit: int = 5,
+                 freshness_weight: float = 0.368, log_s1_stats: bool = False):
         self.candidate_limit = candidate_limit
         self.result_limit = result_limit
         self.freshness_weight = freshness_weight
+        self.log_s1_stats = log_s1_stats
 
     def __repr__(self) -> str:
-        return f"RetrievalConfig(candidate_limit={self.candidate_limit}, result_limit={self.result_limit}, freshness_weight={self.freshness_weight})"
+        return f"RetrievalConfig(candidate_limit={self.candidate_limit}, result_limit={self.result_limit}, freshness_weight={self.freshness_weight}, log_s1_stats={self.log_s1_stats})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RetrievalConfig):
             return NotImplemented
         return (self.candidate_limit == other.candidate_limit
                 and self.result_limit == other.result_limit
-                and self.freshness_weight == other.freshness_weight)
+                and self.freshness_weight == other.freshness_weight
+                and self.log_s1_stats == other.log_s1_stats)
 
 
 class SanshengStoneConfig:
@@ -147,19 +150,30 @@ class ServerConfig:
 
 
 class StorageConfig:
-    __slots__ = ("db_path", "log_path")
+    __slots__ = ("db_path", "log_path", "debug_log_to_file", "debug_log_path")
 
-    def __init__(self, db_path: str = "./mengpo_memory.db", log_path: str = "./mcp_access.log"):
+    def __init__(self, db_path: str = "./mengpo_memory.db", log_path: str = "./mcp_access.log",
+                 debug_log_to_file: bool = False, debug_log_path: str = "./mcp_debug.log"):
         self.db_path = db_path
         self.log_path = log_path
+        self.debug_log_to_file = debug_log_to_file
+        self.debug_log_path = debug_log_path
 
     def __repr__(self) -> str:
-        return f"StorageConfig(db_path={self.db_path!r}, log_path={self.log_path!r})"
+        return (
+            f"StorageConfig(db_path={self.db_path!r}, log_path={self.log_path!r}, "
+            f"debug_log_to_file={self.debug_log_to_file!r}, debug_log_path={self.debug_log_path!r})"
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, StorageConfig):
             return NotImplemented
-        return self.db_path == other.db_path and self.log_path == other.log_path
+        return (
+            self.db_path == other.db_path
+            and self.log_path == other.log_path
+            and self.debug_log_to_file == other.debug_log_to_file
+            and self.debug_log_path == other.debug_log_path
+        )
 
 
 class InjectionConfig:
@@ -307,6 +321,7 @@ class Config:
                 candidate_limit=_g_or(raw, "retrieval", "candidate_limit", typ=int, default=d.retrieval.candidate_limit),
                 result_limit=_g_or(raw, "retrieval", "result_limit", typ=int, default=d.retrieval.result_limit),
                 freshness_weight=_g_or(raw, "retrieval", "freshness_weight", typ=float, default=d.retrieval.freshness_weight),
+                log_s1_stats=_g_or(raw, "retrieval", "log_s1_stats", typ=bool, default=d.retrieval.log_s1_stats),
             ),
             sansheng_stone=SanshengStoneConfig(
                 shrink_factor=_g_or(raw, "sansheng_stone", "shrink_factor", typ=float, default=d.sansheng_stone.shrink_factor),
@@ -327,6 +342,8 @@ class Config:
             storage=StorageConfig(
                 db_path=_g_or(raw, "storage", "db_path", typ=str, default=d.storage.db_path),
                 log_path=_g_or(raw, "storage", "log_path", typ=str, default=d.storage.log_path),
+                debug_log_to_file=_g_or(raw, "storage", "debug_log_to_file", typ=bool, default=d.storage.debug_log_to_file),
+                debug_log_path=_g_or(raw, "storage", "debug_log_path", typ=str, default=d.storage.debug_log_path),
             ),
             injection=InjectionConfig(
                 memory_dir=_g_or(raw, "injection", "memory_dir", typ=str, default=d.injection.memory_dir),
@@ -372,6 +389,7 @@ class Config:
                 candidate_limit=int(_ov("MENGPO_CANDIDATE_LIMIT")) if _ov("MENGPO_CANDIDATE_LIMIT") is not None else cfg.retrieval.candidate_limit,
                 result_limit=int(_ov("MENGPO_RESULT_LIMIT")) if _ov("MENGPO_RESULT_LIMIT") is not None else cfg.retrieval.result_limit,
                 freshness_weight=cfg.retrieval.freshness_weight,
+                log_s1_stats=cfg.retrieval.log_s1_stats,
             ),
             sansheng_stone=cfg.sansheng_stone,
             dedup=cfg.dedup,
@@ -388,6 +406,8 @@ class Config:
             storage=StorageConfig(
                 db_path=_ov("MENGPO_DB_PATH") or cfg.storage.db_path,
                 log_path=_ov("MENGPO_LOG_PATH") or cfg.storage.log_path,
+                debug_log_to_file=cfg.storage.debug_log_to_file,
+                debug_log_path=cfg.storage.debug_log_path,
             ),
             injection=InjectionConfig(
                 memory_dir=_ov("MENGPO_MEMORY_DIR") or cfg.injection.memory_dir,

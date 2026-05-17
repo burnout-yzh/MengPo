@@ -47,6 +47,13 @@ logging.basicConfig(
     format="%(asctime)s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+if _cfg_storage.debug_log_to_file:
+    _debug_handler = logging.FileHandler(_cfg_storage.debug_log_path, encoding="utf-8")
+    _debug_handler.setLevel(logging.DEBUG)
+    _debug_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+    logging.getLogger().addHandler(_debug_handler)
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.debug("debug log enabled: %s", _cfg_storage.debug_log_path)
 
 mcp = FastMCP(_cfg_server.mcp_name, port=_cfg_server.mcp_port)
 
@@ -55,6 +62,7 @@ mcp = FastMCP(_cfg_server.mcp_name, port=_cfg_server.mcp_port)
 # ═══════════════════════════════════════════════════════════════════════
 
 _db: Database | None = None
+_db_lock = threading.Lock()
 
 
 import subprocess
@@ -65,7 +73,10 @@ import threading
 def _get_db() -> Database:
     global _db
     if _db is None:
-        _db = Database(_cfg_storage.db_path)
+        with _db_lock:
+            if _db is None:
+                _db = Database(_cfg_storage.db_path)
+                logging.debug("db initialized: %s", _cfg_storage.db_path)
     return _db
 
 
@@ -94,6 +105,7 @@ def _trigger_initial_injection() -> None:
     if not inject_script.is_file():
         logging.error("First-run inject script not found: %s", inject_script)
         return
+    logging.debug("first-run injection triggered: %s", inject_script)
 
     def _run() -> None:
         try:
@@ -120,6 +132,7 @@ def _trigger_initial_injection() -> None:
 #  Key: session_id.  Value: dict with "ranked" (fully blend-sorted list)
 #  and "cursor" (index into ranked for next expand slice).
 _session_cache: dict[str, dict] = {}
+_MAX_SESSION_CACHE = 1024
 
 
 def _blend(semantic: float, freshness: float) -> float:
@@ -166,8 +179,8 @@ def get_relevant_memories(query: str, session_id: str = "") -> str:
         )
     except FileNotFoundError:
         return json.dumps({"error": "Memory database not found. Run ingest first."})
-    except RuntimeError:
-        return json.dumps({"error": "Memory database not found. Run ingest first."})
+    except RuntimeError as exc:
+        return json.dumps({"error": f"retrieval failed: {exc}"})
 
     if not candidates:
         return json.dumps({"results": [], "count": 0})
@@ -188,6 +201,10 @@ def get_relevant_memories(query: str, session_id: str = "") -> str:
             "ranked": ranked_all,
             "cursor": len(delivery),
         }
+        if len(_session_cache) > _MAX_SESSION_CACHE:
+            oldest = next(iter(_session_cache))
+            if oldest != session_id:
+                _session_cache.pop(oldest, None)
 
     if delivery:
         top = delivery[0]

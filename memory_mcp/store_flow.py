@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +15,18 @@ from .dedup import DEFAULT_DEDUP_THRESHOLD, ReviewVerdict
 from .dedup_audit import append_dedup_audit_event, make_dedup_audit_event
 from .embeddings import OllamaEmbeddingClient
 from .store_preflight import PreflightResult, run_store_preflight
+
+
+_logger = logging.getLogger(__name__)
+_merge_append_lock = threading.Lock()
+
+
+def _resolve_merge_target(root_dir: str | Path, merge_target_file: str) -> Path:
+    root = Path(root_dir).expanduser().resolve()
+    target = (root / merge_target_file).resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"merge target escapes root: {merge_target_file}")
+    return target
 
 
 @dataclass(frozen=True)
@@ -65,19 +79,22 @@ def orchestrate_store_memory(
             candidate = preflight.reviewed_candidate
             action = "reject" if preflight.reason == "duplicate_confirmed_by_review" else "merge_append"
             verdict = "duplicate" if action == "reject" else "false_positive"
-            append_dedup_audit_event(
-                dedup_audit_log_file,
-                make_dedup_audit_event(
-                    namespace=namespace,
-                    incoming_content_hash=compute_content_hash(content),
-                    reviewed_memory_id=candidate.memory_id,
-                    similarity=candidate.similarity,
-                    verdict=verdict,
-                    action=action,
-                    reason=preflight.reason,
-                    merge_target_file=preflight.merge_target_file,
-                ),
-            )
+            try:
+                append_dedup_audit_event(
+                    dedup_audit_log_file,
+                    make_dedup_audit_event(
+                        namespace=namespace,
+                        incoming_content_hash=compute_content_hash(content),
+                        reviewed_memory_id=candidate.memory_id,
+                        similarity=candidate.similarity,
+                        verdict=verdict,
+                        action=action,
+                        reason=preflight.reason,
+                        merge_target_file=preflight.merge_target_file,
+                    ),
+                )
+            except Exception as exc:
+                _logger.warning("dedup audit append failed: %s", exc)
         return StoreFlowResult(
             stored=False,
             skipped=True,
@@ -119,13 +136,13 @@ def apply_merge_append(
     For now this is a straightforward append action; future versions may do
     semantic editing before append.
     """
-    root = Path(root_dir)
-    target = root / merge_target_file
+    target = _resolve_merge_target(root_dir, merge_target_file)
     target.parent.mkdir(parents=True, exist_ok=True)
     marker = f"\n\n---\nmerged_from_memory_id: {memory_id}\n"
-    with target.open("a", encoding="utf-8") as f:
-        f.write(marker)
-        f.write(incoming_content)
-        if not incoming_content.endswith("\n"):
-            f.write("\n")
+    with _merge_append_lock:
+        with target.open("a", encoding="utf-8") as f:
+            f.write(marker)
+            f.write(incoming_content)
+            if not incoming_content.endswith("\n"):
+                f.write("\n")
     return target

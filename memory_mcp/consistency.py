@@ -32,7 +32,9 @@ class ConsistencyReport:
 
 def run_consistency_check(db: Database) -> ConsistencyReport:
     """Return integrity report across memories/chunks_meta/chunks_vec."""
-    cur = db.conn.cursor()
+    conn = db.conn
+    conn.execute("BEGIN;")
+    cur = conn.cursor()
     try:
         orphan_meta_count = cur.execute(
             """
@@ -85,9 +87,13 @@ def run_consistency_check(db: Database) -> ConsistencyReport:
                       FROM chunks_meta
                   GROUP BY memory_id, chunk_index
                     HAVING COUNT(*) > 1
-              ) d
+                ) d
             """
         ).fetchone()[0]
+        conn.execute("COMMIT;")
+    except Exception:
+        conn.execute("ROLLBACK;")
+        raise
     finally:
         cur.close()
 

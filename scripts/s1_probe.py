@@ -2,20 +2,17 @@
 """sqlite-vec probe — quick vector search sanity check.
 
 Usage:
-    python scripts/s1_probe.py "your query"
     python -m scripts.s1_probe "your query"
 """
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from memory_mcp.config import Config
 from memory_mcp import Database
+from memory_mcp.embeddings import EmbeddingError
 from memory_mcp.retrieval import S1_vector_search, SEMANTIC_CANDIDATE_LIMIT
 
 DB_PATH = Config.load_cached().storage.db_path
@@ -26,16 +23,19 @@ def main() -> None:
     print(f"Query: {query}")
 
     if not Path(DB_PATH).exists():
-        print(f"ERROR: no DB at {DB_PATH}. Run scripts/inject_memory.py first.")
+        print(f"ERROR: no DB at {DB_PATH}. Run python -m scripts.inject_memory first.")
         sys.exit(1)
 
     db = Database(DB_PATH)
     try:
-        candidates = S1_vector_search(db, query, candidate_limit=SEMANTIC_CANDIDATE_LIMIT)
+        try:
+            candidates = S1_vector_search(db, query, candidate_limit=SEMANTIC_CANDIDATE_LIMIT)
+        except (EmbeddingError, RuntimeError) as exc:
+            print(f"ERROR: S1 probe failed ({exc})")
+            raise SystemExit(2)
         print(f"Results: {len(candidates)}\n")
 
         if not candidates:
-            db.close()
             return
 
         print(f"{'Rank':<6}{'Dist':<8}{'Source':<30}Preview")
