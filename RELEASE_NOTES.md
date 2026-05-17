@@ -1,3 +1,36 @@
+# MengPo v0.12.1
+
+## Manual Audit Closeout: Reliability, Safety, and Observability Hardening
+
+This release finalizes the current manual audit cycle and lands a full-chain stability pass across scanner/store/DB/retrieval/embedding/rerank/dedup/consistency plus script tooling.
+
+### Safety and stability updates
+- Fixed `scan_memory_dir` root-path handling bug.
+- Added bounds checks and concurrency locking in `apply_merge_append`.
+- Added mutex protection to `Database.transaction`.
+- Added pre-store validation in atomic store: embedding type, UTF-8, and JSON checks before persistence.
+
+### Configuration consistency
+- Embedding dimension is now config-driven via `embedding.dim`.
+- Added runtime dimension consistency checks on embedding/rerank paths (enabled in main flow, test-compatible).
+
+### Observability and tooling
+- Retrieval telemetry and duoshe reads are now best-effort.
+- Added `retrieval.log_s1_stats` toggle to control S1 stats logging.
+- MCP tool copy refreshed to concise "when to use + how to use" style.
+- Added debug file logging controls in `bowl.yaml`: `storage.debug_log_to_file` and `storage.debug_log_path`.
+- Wired debug file logging into server and `inject_memory.py`.
+- `inject_memory.py` now emits progress logs: embedding start, elapsed time every 200 chunks, and final totals.
+
+### Script normalization
+- `inject_sample` / `inject_memory` / `bridge` / `s1_probe` now run in package style (removed `sys.path` injection).
+- Added friendlier exception handling around script execution paths.
+
+### Verification
+- `python -m pytest -q` passed: `168 passed, 1 skipped, 7 subtests passed`.
+
+---
+
 # MengPo v0.12.0
 
 ## Quick-Start Experience: `setup.bat` + `requirements.txt` + First-Time User Guide

@@ -8,6 +8,17 @@
 
 ## DONE
 
+### v0.12.1 — 人工审计收尾与稳健性增强 ✅
+- 审计收尾：`scanner/store_flow/atomic_store/database/schema/retrieval*/embeddings/reranker/freshness/dedup*/consistency` 与 `scripts/*` 全链路巡检并落修
+- 安全与稳定：修复 `scan_memory_dir` 根路径 bug；`apply_merge_append` 增加越界校验与并发锁；`Database.transaction` 增加互斥
+- 原子存储前置校验：embedding 类型 / UTF-8 / JSON 验证后再落库
+- 配置一致性：向量维度改为 `embedding.dim` 配置驱动，并在 embedding/rerank 路径增加维度一致性检查
+- 可观测性：retrieval telemetry/duoshe 读取改为 best-effort；`retrieval.log_s1_stats` 开关接入；MCP tool 文案改为“何时用+怎么用”精简版
+- 调试能力：`bowl.yaml` 新增 `storage.debug_log_to_file` 与 `storage.debug_log_path`，并在服务端与 `inject_memory.py` 落地文件 debug 日志
+- 注入进度日志：`inject_memory.py` 增加“开始嵌入 / 每 200 条耗时 / 完成总量与总耗时”输出
+- 脚本规范：`inject_sample/inject_memory/bridge/s1_probe` 统一包方式运行（移除 `sys.path` 注入）并补异常友好处理
+- 验证：`python -m pytest -q` 通过（`168 passed, 1 skipped, 7 subtests passed`）
+
 ### v0.11.0 — bowl.yaml 配置中心化重构 ✅
 - `memory_mcp/config.py` 新建：Config 类，完整映射 bowl.yaml 全部 10 个配置组
 - **所有**模块的硬编码参数/env-var 默认值统一为 config 驱动

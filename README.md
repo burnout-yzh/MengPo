@@ -60,6 +60,13 @@ Implemented and tested:
 - S3 writeback reinforcement with configurable `shrink_factor` (default `0.368`, i.e. `1/e`).
 - Consistency checker for `memories/chunks_meta/chunks_vec` linkage plus utility script `scripts/check_consistency.py`.
 - Dedup adjudication policy, pre-store preflight routing, merge-append helper, and dedup audit events.
+- Reliability hardening in store path: `scan_memory_dir` root-path fix, `apply_merge_append` bounds validation + concurrency lock, and `Database.transaction` mutex protection.
+- Atomic store input guards: embedding type / UTF-8 / JSON pre-validation before persistence.
+- Config-driven embedding dimension (`embedding.dim`) with runtime dimension consistency checks in embedding/rerank paths.
+- Retrieval observability hardening: telemetry and duoshe reads are best-effort; optional S1 stats logging via `retrieval.log_s1_stats`.
+- Debug logging toggles: `storage.debug_log_to_file` and `storage.debug_log_path` are wired in server and `scripts/inject_memory.py`.
+- Injection progress logging in `scripts/inject_memory.py`: start marker, per-200-chunk elapsed time, and final totals.
+- Script runtime normalization: `inject_sample` / `inject_memory` / `bridge` / `s1_probe` use package-style execution (no `sys.path` injection) with friendlier exception handling.
 - Configurable first-round duoshe injection for new sessions (disabled by default): force-syncs the latest persona on a session's first retrieval by injecting prompts from `AGENTS.md`, `MEMORY.md`, `PROFILE.md`, and `SOUL.md`. Configure in `memory_mcp/retrieval_service.py` via `enable_duoshe` and `duoshe_root`.
 
 Validated in integration runs:
@@ -82,7 +89,7 @@ Current MCP server note:
 Run tests directly from the repository root:
 
 ```bash
-python3 -m unittest discover -v
+python -m pytest -q
 ```
 
 Run the manual QA script after installing in editable mode:
@@ -164,8 +171,12 @@ server:
 | `server.rerank_model` | `server.rerank_model` | str | `qwen3-reranker-0.6b` |
 | `storage.db_path` | `storage.db_path` | str | `./mengpo_memory.db` |
 | `storage.log_path` | `storage.log_path` | str | `./mcp_access.log` |
+| `storage.debug_log_to_file` | `storage.debug_log_to_file` | bool | `false` |
+| `storage.debug_log_path` | `storage.debug_log_path` | str | `./mcp_debug.log` |
 | `injection.memory_dir` | `injection.memory_dir` | str | `./memory` |
+| `injection.file_pattern` | `injection.file_pattern` | str | `*.md` |
 | `injection.batch_size` | `injection.batch_size` | int | 15 |
+| `retrieval.log_s1_stats` | `retrieval.log_s1_stats` | bool | `false` |
 | `rebuild.warn_max_files` | `rebuild.warn_max_files` | int | 250000 |
 | `rebuild.hard_max_files` | `rebuild.hard_max_files` | int | 500000 |
 | `rebuild.warn_max_bytes` | `rebuild.warn_max_bytes` | int | 26843545600 |
@@ -230,6 +241,7 @@ Config: `chunk: size_min=160, size_max=500`, `batch_size=15`, `qwen3-embedding-0
 
 ## Version History
 
+- **v0.12.1** — Manual audit closeout: reliability/safety hardening, config-driven embedding dimension checks, retrieval observability updates, and debug logging controls; test baseline `168 passed, 1 skipped, 7 subtests passed`
 - **v0.12.0** — Quick-start experience: `setup.bat` + `requirements.txt` + `首次使用_first_time_use.md` (first-time user guide), dual pip/uv support
 - **v0.11.0** — `bowl.yaml` configuration centralization: all parameters migrated from hardcoded defaults/env-vars to YAML-driven
 - **v0.10.79** — Dedup reuses pre-computed vectors from `chunks_vec`, no re-embedding

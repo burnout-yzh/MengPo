@@ -1,3 +1,36 @@
+# MengPo v0.12.1
+
+## 人工审计收尾：稳健性、安全性与可观测性增强
+
+本版本完成当前阶段人工审计收尾，覆盖 scanner/store/DB/retrieval/embedding/rerank/dedup/consistency 与脚本链路的全链路巡检与落修。
+
+### 安全与稳定性更新
+- 修复 `scan_memory_dir` 根路径处理 bug。
+- `apply_merge_append` 增加越界校验与并发锁。
+- `Database.transaction` 增加互斥保护。
+- 原子存储新增前置校验：embedding 类型、UTF-8、JSON 在落库前验证。
+
+### 配置一致性
+- 向量维度改为 `embedding.dim` 配置驱动。
+- embedding/rerank 路径增加维度一致性检查（主流程启用，测试兼容）。
+
+### 可观测性与工具体验
+- retrieval telemetry 与 duoshe 读取改为 best-effort。
+- 新增 `retrieval.log_s1_stats` 开关控制 S1 统计日志。
+- MCP tool 文案更新为精简“何时用 + 怎么用”。
+- `bowl.yaml` 新增调试落盘开关：`storage.debug_log_to_file` 与 `storage.debug_log_path`。
+- server 与 `inject_memory.py` 已接入调试日志落盘。
+- `inject_memory.py` 增加注入进度日志：开始嵌入、每 200 条耗时、完成总量与总耗时。
+
+### 脚本规范统一
+- `inject_sample` / `inject_memory` / `bridge` / `s1_probe` 统一包方式运行（移除 `sys.path` 注入）。
+- 脚本路径补充更友好的异常处理。
+
+### 验证结果
+- `python -m pytest -q` 通过：`168 passed, 1 skipped, 7 subtests passed`。
+
+---
+
 # MengPo v0.12.0
 
 ## 快速上手体验：`setup.bat` + `requirements.txt` + 首次使用指引

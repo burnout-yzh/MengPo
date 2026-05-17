@@ -5,21 +5,21 @@ title MengPo Setup
 echo.
 echo   ============================================
 echo     MengPo - Memory Evolution Orchestrator
-echo     v0.12.0
+echo     v0.12.1
 echo   ============================================
 echo.
 
 :: ── Step 0: find Python ──
 set PYTHON=
-for %%p in (python3 python python3.11 python3.10) do (
+for %%p in (python3.12 python3.11 python3 python) do (
     where %%p >nul 2>&1
     if !errorlevel!==0 (
-        %%p -c "import sys; exit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+        %%p -c "import sys; exit(0 if sys.version_info>=(3,11) else 1)" >nul 2>&1
         if !errorlevel!==0 set PYTHON=%%p
     )
     if defined PYTHON goto :found_python
 )
-echo [ERROR] Python 3.10+ not found. Install from https://www.python.org/downloads/
+echo [ERROR] Python 3.11+ not found. Install from https://www.python.org/downloads/
 pause & exit /b 1
 
 :found_python

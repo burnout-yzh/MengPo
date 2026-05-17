@@ -27,6 +27,7 @@ __pycache__/
 
 # Internal scripts (user-specific) — archived migration scripts only
 patch_mengpo_vec.py
+人工审计.md
 
 # Package build artifacts
 *.egg-info/

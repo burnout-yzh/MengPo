@@ -54,6 +54,13 @@ $$\text{S2: 轮回排序}\quad Score = R^{\,(1-w)} \cdot \left(e^{-\Delta t / \t
 - 检索排序策略：语义 top45、按新鲜值重排、固定返回 5 条
 - S1/S2/S3 回忆闭环与 `expand` 排重
 - S3 写回强化
+- 存储链路稳健性增强：修复 `scan_memory_dir` 根路径 bug；`apply_merge_append` 新增越界校验与并发锁；`Database.transaction` 增加互斥保护
+- 原子存储前置校验：embedding 类型 / UTF-8 / JSON 在落库前进行验证
+- 配置一致性增强：向量维度改为 `embedding.dim` 配置驱动，并在 embedding/rerank 路径加入维度一致性检查
+- 可观测性增强：retrieval telemetry 与 duoshe 读取改为 best-effort；新增 `retrieval.log_s1_stats` 开关
+- 调试日志开关落地：`storage.debug_log_to_file` 与 `storage.debug_log_path` 已接入 server 与 `scripts/inject_memory.py`
+- 注入进度日志：`scripts/inject_memory.py` 新增开始嵌入、每 200 条耗时、完成总量与总耗时输出
+- 脚本规范统一：`inject_sample` / `inject_memory` / `bridge` / `s1_probe` 统一包方式运行（移除 `sys.path` 注入）并补充异常友好处理
 - 夺舍注入 (DuoShe Injection)：可配置新会话首轮强制同步"最新人格"（默认关闭），从 `AGENTS.md`、`MEMORY.md`、`PROFILE.md`、`SOUL.md` 中注入提示词，实现跨会话的性格连续性。在 `memory_mcp/retrieval_service.py` 中通过 `enable_duoshe` 和 `duoshe_root` 配置。
 - 忘川审计：通过 check_consistency.py 辅助处理遗忘边缘的去重与裁决。
 
@@ -71,7 +78,7 @@ $$\text{S2: 轮回排序}\quad Score = R^{\,(1-w)} \cdot \left(e^{-\Delta t / \t
 
 ## 开发
 ```bash
-python3 -m unittest discover -v
+python -m pytest -q
 python3 scripts/manual_qa.py
 PYTHONPATH=. python3 scripts/manual_qa.py
 python3 scripts/check_consistency.py <db_path>
@@ -142,8 +149,12 @@ server:
 | `server.rerank_model` | `server.rerank_model` | str | `qwen3-reranker-0.6b` |
 | `storage.db_path` | `storage.db_path` | str | `./mengpo_memory.db` |
 | `storage.log_path` | `storage.log_path` | str | `./mcp_access.log` |
+| `storage.debug_log_to_file` | `storage.debug_log_to_file` | bool | `false` |
+| `storage.debug_log_path` | `storage.debug_log_path` | str | `./mcp_debug.log` |
 | `injection.memory_dir` | `injection.memory_dir` | str | `./memory` |
+| `injection.file_pattern` | `injection.file_pattern` | str | `*.md` |
 | `injection.batch_size` | `injection.batch_size` | int | 15 |
+| `retrieval.log_s1_stats` | `retrieval.log_s1_stats` | bool | `false` |
 | `rebuild.warn_max_files` | `rebuild.warn_max_files` | int | 250000 |
 | `rebuild.hard_max_files` | `rebuild.hard_max_files` | int | 500000 |
 | `rebuild.warn_max_bytes` | `rebuild.warn_max_bytes` | int | 26843545600 |
@@ -213,6 +224,7 @@ print('DB cleared')
 
 ## 版本历史
 
+- **v0.12.1** — 人工审计收尾：稳健性/安全性修复、配置驱动维度一致性检查、检索可观测性增强与调试日志开关；测试基线 `168 passed, 1 skipped, 7 subtests passed`
 - **v0.12.0** — 快速上手体验：`setup.bat` + `requirements.txt` + `首次使用_first_time_use.md`（首次使用指引），同时兼容 pip 和 uv
 - **v0.11.0** — `bowl.yaml` 配置中心化：所有参数从硬编码/环境变量迁移到 YAML 驱动
 - **v0.10.79** — 去重复用 `chunks_vec` 中已计算的向量，无需重新 embedding
